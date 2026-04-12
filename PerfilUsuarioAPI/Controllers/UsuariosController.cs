@@ -1,263 +1,288 @@
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.SqlClient;
+using System;
+using System.Configuration;
+using System.Data.SqlClient;
+using System.Linq;
+using System.Net;
+using System.Web.Http;
 using Dapper;
 using PerfilUsuarioAPI.Models;
 
-namespace PerfilUsuarioAPI.Controllers;
-
-[ApiController]
-[Route("api/[controller]")]
-public class UsuariosController : ControllerBase
+namespace PerfilUsuarioAPI.Controllers
 {
-    private readonly string _connectionString;
-
-    public UsuariosController(IConfiguration configuration)
+    [RoutePrefix("api/usuarios")]
+    public class UsuariosController : ApiController
     {
-        _connectionString = configuration.GetConnectionString("DefaultConnection")!;
-    }
+        private readonly string _connectionString =
+            ConfigurationManager.ConnectionStrings["DefaultConnection"].ConnectionString;
 
-    [HttpGet]
-    public async Task<IActionResult> GetAll()
-    {
-        try
+        [HttpGet]
+        [Route("")]
+        public IHttpActionResult GetAll()
         {
-            using var connection = new SqlConnection(_connectionString);
-            var usuarios = (await connection.QueryAsync<Usuario>(
-                "SELECT id, username, password, suspendido FROM usuarios")).ToList();
-
-            foreach (var usuario in usuarios)
+            try
             {
-                usuario.Roles = (await connection.QueryAsync<Rol>(
-                    @"SELECT r.id, r.strValor, r.strDescripcion
-                      FROM roles r
-                      INNER JOIN UsuarioRoles ur ON ur.idRol = r.id
-                      WHERE ur.idUsuario = @IdUsuario",
-                    new { IdUsuario = usuario.Id })).ToList();
+                using (var connection = new SqlConnection(_connectionString))
+                {
+                    var usuarios = connection.Query<Usuario>(
+                        "SELECT id, username, password, suspendido FROM usuarios").ToList();
+
+                    foreach (var usuario in usuarios)
+                    {
+                        usuario.Roles = connection.Query<Rol>(
+                            @"SELECT r.id, r.strValor, r.strDescripcion
+                              FROM roles r
+                              INNER JOIN UsuarioRoles ur ON ur.idRol = r.id
+                              WHERE ur.idUsuario = @IdUsuario",
+                            new { IdUsuario = usuario.Id }).ToList();
+                    }
+
+                    var result = usuarios.Select(u => new { u.Id, u.Username, u.Suspendido, u.Roles });
+                    return Ok(result);
+                }
             }
-
-            var result = usuarios.Select(u => new { u.Id, u.Username, u.Suspendido, u.Roles });
-            return Ok(result);
+            catch (Exception ex)
+            {
+                return InternalServerError(ex);
+            }
         }
-        catch (Exception ex)
+
+        [HttpPost]
+        [Route("registro")]
+        public IHttpActionResult Registro(UsuarioRequest request)
         {
-            return StatusCode(500, new { message = "Error interno del servidor.", error = ex.Message });
-        }
-    }
-
-    [HttpPost("registro")]
-    public async Task<IActionResult> Registro([FromBody] UsuarioRequest request)
-    {
-        if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Password))
-            return BadRequest(new { message = "Username y password son requeridos." });
-
-        try
-        {
-            using var connection = new SqlConnection(_connectionString);
-            var existing = await connection.QueryFirstOrDefaultAsync<int?>(
-                "SELECT id FROM usuarios WHERE username = @Username",
-                new { request.Username });
-
-            if (existing != null)
-                return BadRequest(new { message = "El usuario ya existe." });
-
-            var userId = await connection.QuerySingleAsync<int>(
-                @"INSERT INTO usuarios (username, password, suspendido)
-                  VALUES (@Username, @Password, @Suspendido);
-                  SELECT CAST(SCOPE_IDENTITY() AS INT);",
-                new { request.Username, request.Password, Suspendido = false });
-
-            return StatusCode(201, new { id = userId, username = request.Username, message = "Usuario registrado exitosamente." });
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, new { message = "Error interno del servidor.", error = ex.Message });
-        }
-    }
-
-    [HttpGet("{id}")]
-    public async Task<IActionResult> GetById(int id)
-    {
-        try
-        {
-            using var connection = new SqlConnection(_connectionString);
-            var usuario = await connection.QueryFirstOrDefaultAsync<Usuario>(
-                "SELECT id, username, password, suspendido FROM usuarios WHERE id = @Id",
-                new { Id = id });
-
-            if (usuario == null)
-                return NotFound(new { message = "Usuario no encontrado." });
-
-            usuario.Roles = (await connection.QueryAsync<Rol>(
-                @"SELECT r.id, r.strValor, r.strDescripcion
-                  FROM roles r
-                  INNER JOIN UsuarioRoles ur ON ur.idRol = r.id
-                  WHERE ur.idUsuario = @IdUsuario",
-                new { IdUsuario = usuario.Id })).ToList();
-
-            return Ok(new { usuario.Id, usuario.Username, usuario.Suspendido, usuario.Roles });
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, new { message = "Error interno del servidor.", error = ex.Message });
-        }
-    }
-
-    [HttpPost]
-    public async Task<IActionResult> Create([FromBody] UsuarioRequest request)
-    {
-        if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Password))
-            return BadRequest(new { message = "Username y password son requeridos." });
-
-        try
-        {
-            using var connection = new SqlConnection(_connectionString);
-            await connection.OpenAsync();
-            using var transaction = connection.BeginTransaction();
+            if (string.IsNullOrWhiteSpace(request?.Username) || string.IsNullOrWhiteSpace(request?.Password))
+                return BadRequest("Username y password son requeridos.");
 
             try
             {
-                var existing = await connection.QueryFirstOrDefaultAsync<int?>(
-                    "SELECT id FROM usuarios WHERE username = @Username",
-                    new { request.Username }, transaction);
-
-                if (existing != null)
+                using (var connection = new SqlConnection(_connectionString))
                 {
-                    transaction.Rollback();
-                    return BadRequest(new { message = "El usuario ya existe." });
+                    var existing = connection.QueryFirstOrDefault<int?>(
+                        "SELECT id FROM usuarios WHERE username = @Username",
+                        new { request.Username });
+
+                    if (existing != null)
+                        return Content(HttpStatusCode.BadRequest,
+                            new { message = "El usuario ya existe." });
+
+                    var userId = connection.QuerySingle<int>(
+                        @"INSERT INTO usuarios (username, password, suspendido)
+                          VALUES (@Username, @Password, 0);
+                          SELECT CAST(SCOPE_IDENTITY() AS INT);",
+                        new { request.Username, request.Password });
+
+                    return Content(HttpStatusCode.Created,
+                        new { id = userId, username = request.Username, message = "Usuario registrado exitosamente." });
                 }
-
-                var userId = await connection.QuerySingleAsync<int>(
-                    @"INSERT INTO usuarios (username, password, suspendido)
-                      VALUES (@Username, @Password, @Suspendido);
-                      SELECT CAST(SCOPE_IDENTITY() AS INT);",
-                    new { request.Username, request.Password, request.Suspendido }, transaction);
-
-                foreach (var rolId in request.RolIds)
-                {
-                    await connection.ExecuteAsync(
-                        "INSERT INTO UsuarioRoles (idUsuario, idRol) VALUES (@IdUsuario, @IdRol)",
-                        new { IdUsuario = userId, IdRol = rolId }, transaction);
-                }
-
-                transaction.Commit();
-                return CreatedAtAction(nameof(GetById), new { id = userId }, new { id = userId, message = "Usuario creado exitosamente." });
             }
-            catch
+            catch (Exception ex)
             {
-                transaction.Rollback();
-                throw;
+                return InternalServerError(ex);
             }
         }
-        catch (Exception ex)
+
+        [HttpGet]
+        [Route("{id:int}")]
+        public IHttpActionResult GetById(int id)
         {
-            return StatusCode(500, new { message = "Error interno del servidor.", error = ex.Message });
+            try
+            {
+                using (var connection = new SqlConnection(_connectionString))
+                {
+                    var usuario = connection.QueryFirstOrDefault<Usuario>(
+                        "SELECT id, username, password, suspendido FROM usuarios WHERE id = @Id",
+                        new { Id = id });
+
+                    if (usuario == null)
+                        return Content(HttpStatusCode.NotFound, new { message = "Usuario no encontrado." });
+
+                    usuario.Roles = connection.Query<Rol>(
+                        @"SELECT r.id, r.strValor, r.strDescripcion
+                          FROM roles r
+                          INNER JOIN UsuarioRoles ur ON ur.idRol = r.id
+                          WHERE ur.idUsuario = @IdUsuario",
+                        new { IdUsuario = usuario.Id }).ToList();
+
+                    return Ok(new { usuario.Id, usuario.Username, usuario.Suspendido, usuario.Roles });
+                }
+            }
+            catch (Exception ex)
+            {
+                return InternalServerError(ex);
+            }
         }
-    }
 
-    [HttpPut("{id}")]
-    public async Task<IActionResult> Update(int id, [FromBody] UsuarioRequest request)
-    {
-        if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Password))
-            return BadRequest(new { message = "Username y password son requeridos." });
-
-        try
+        [HttpPost]
+        [Route("")]
+        public IHttpActionResult Create(UsuarioRequest request)
         {
-            using var connection = new SqlConnection(_connectionString);
-            await connection.OpenAsync();
-            using var transaction = connection.BeginTransaction();
+            if (string.IsNullOrWhiteSpace(request?.Username) || string.IsNullOrWhiteSpace(request?.Password))
+                return BadRequest("Username y password son requeridos.");
 
             try
             {
-                var exists = await connection.QueryFirstOrDefaultAsync<int?>(
-                    "SELECT id FROM usuarios WHERE id = @Id", new { Id = id }, transaction);
-
-                if (exists == null)
+                using (var connection = new SqlConnection(_connectionString))
                 {
-                    transaction.Rollback();
-                    return NotFound(new { message = "Usuario no encontrado." });
+                    connection.Open();
+                    using (var transaction = connection.BeginTransaction())
+                    {
+                        try
+                        {
+                            var existing = connection.QueryFirstOrDefault<int?>(
+                                "SELECT id FROM usuarios WHERE username = @Username",
+                                new { request.Username }, transaction);
+
+                            if (existing != null)
+                            {
+                                transaction.Rollback();
+                                return Content(HttpStatusCode.BadRequest,
+                                    new { message = "El usuario ya existe." });
+                            }
+
+                            var userId = connection.QuerySingle<int>(
+                                @"INSERT INTO usuarios (username, password, suspendido)
+                                  VALUES (@Username, @Password, @Suspendido);
+                                  SELECT CAST(SCOPE_IDENTITY() AS INT);",
+                                new { request.Username, request.Password, request.Suspendido }, transaction);
+
+                            foreach (var rolId in request.RolIds)
+                            {
+                                connection.Execute(
+                                    "INSERT INTO UsuarioRoles (idUsuario, idRol) VALUES (@IdUsuario, @IdRol)",
+                                    new { IdUsuario = userId, IdRol = rolId }, transaction);
+                            }
+
+                            transaction.Commit();
+                            return Content(HttpStatusCode.Created,
+                                new { id = userId, message = "Usuario creado exitosamente." });
+                        }
+                        catch
+                        {
+                            transaction.Rollback();
+                            throw;
+                        }
+                    }
                 }
-
-                await connection.ExecuteAsync(
-                    "UPDATE usuarios SET username = @Username, password = @Password, suspendido = @Suspendido WHERE id = @Id",
-                    new { Id = id, request.Username, request.Password, request.Suspendido }, transaction);
-
-                await connection.ExecuteAsync(
-                    "DELETE FROM UsuarioRoles WHERE idUsuario = @Id", new { Id = id }, transaction);
-
-                foreach (var rolId in request.RolIds)
-                {
-                    await connection.ExecuteAsync(
-                        "INSERT INTO UsuarioRoles (idUsuario, idRol) VALUES (@IdUsuario, @IdRol)",
-                        new { IdUsuario = id, IdRol = rolId }, transaction);
-                }
-
-                transaction.Commit();
-                return Ok(new { message = "Usuario actualizado exitosamente." });
             }
-            catch
+            catch (Exception ex)
             {
-                transaction.Rollback();
-                throw;
+                return InternalServerError(ex);
             }
         }
-        catch (Exception ex)
-        {
-            return StatusCode(500, new { message = "Error interno del servidor.", error = ex.Message });
-        }
-    }
 
-    [HttpDelete("{id}")]
-    public async Task<IActionResult> Delete(int id)
-    {
-        try
+        [HttpPut]
+        [Route("{id:int}")]
+        public IHttpActionResult Update(int id, UsuarioRequest request)
         {
-            using var connection = new SqlConnection(_connectionString);
-            await connection.OpenAsync();
-            using var transaction = connection.BeginTransaction();
+            if (string.IsNullOrWhiteSpace(request?.Username) || string.IsNullOrWhiteSpace(request?.Password))
+                return BadRequest("Username y password son requeridos.");
 
             try
             {
-                var exists = await connection.QueryFirstOrDefaultAsync<int?>(
-                    "SELECT id FROM usuarios WHERE id = @Id", new { Id = id }, transaction);
-
-                if (exists == null)
+                using (var connection = new SqlConnection(_connectionString))
                 {
-                    transaction.Rollback();
-                    return NotFound(new { message = "Usuario no encontrado." });
+                    connection.Open();
+                    using (var transaction = connection.BeginTransaction())
+                    {
+                        try
+                        {
+                            var exists = connection.QueryFirstOrDefault<int?>(
+                                "SELECT id FROM usuarios WHERE id = @Id", new { Id = id }, transaction);
+
+                            if (exists == null)
+                            {
+                                transaction.Rollback();
+                                return Content(HttpStatusCode.NotFound, new { message = "Usuario no encontrado." });
+                            }
+
+                            connection.Execute(
+                                "UPDATE usuarios SET username = @Username, password = @Password, suspendido = @Suspendido WHERE id = @Id",
+                                new { Id = id, request.Username, request.Password, request.Suspendido }, transaction);
+
+                            connection.Execute(
+                                "DELETE FROM UsuarioRoles WHERE idUsuario = @Id", new { Id = id }, transaction);
+
+                            foreach (var rolId in request.RolIds)
+                            {
+                                connection.Execute(
+                                    "INSERT INTO UsuarioRoles (idUsuario, idRol) VALUES (@IdUsuario, @IdRol)",
+                                    new { IdUsuario = id, IdRol = rolId }, transaction);
+                            }
+
+                            transaction.Commit();
+                            return Ok(new { message = "Usuario actualizado exitosamente." });
+                        }
+                        catch
+                        {
+                            transaction.Rollback();
+                            throw;
+                        }
+                    }
                 }
-
-                await connection.ExecuteAsync(
-                    "DELETE FROM UsuarioRoles WHERE idUsuario = @Id", new { Id = id }, transaction);
-
-                var perfilIds = (await connection.QueryAsync<int>(
-                    "SELECT id FROM perfilUsuario WHERE idUsuario = @Id", new { Id = id }, transaction)).ToList();
-
-                foreach (var perfilId in perfilIds)
-                {
-                    await connection.ExecuteAsync(
-                        "DELETE FROM Telefonos WHERE idPerfilUsuario = @PerfilId", new { PerfilId = perfilId }, transaction);
-                    await connection.ExecuteAsync(
-                        "DELETE FROM direcciones WHERE idPerfilUsuario = @PerfilId", new { PerfilId = perfilId }, transaction);
-                }
-
-                await connection.ExecuteAsync(
-                    "DELETE FROM perfilUsuario WHERE idUsuario = @Id", new { Id = id }, transaction);
-
-                await connection.ExecuteAsync(
-                    "DELETE FROM usuarios WHERE id = @Id", new { Id = id }, transaction);
-
-                transaction.Commit();
-                return Ok(new { message = "Usuario eliminado exitosamente." });
             }
-            catch
+            catch (Exception ex)
             {
-                transaction.Rollback();
-                throw;
+                return InternalServerError(ex);
             }
         }
-        catch (Exception ex)
+
+        [HttpDelete]
+        [Route("{id:int}")]
+        public IHttpActionResult Delete(int id)
         {
-            return StatusCode(500, new { message = "Error interno del servidor.", error = ex.Message });
+            try
+            {
+                using (var connection = new SqlConnection(_connectionString))
+                {
+                    connection.Open();
+                    using (var transaction = connection.BeginTransaction())
+                    {
+                        try
+                        {
+                            var exists = connection.QueryFirstOrDefault<int?>(
+                                "SELECT id FROM usuarios WHERE id = @Id", new { Id = id }, transaction);
+
+                            if (exists == null)
+                            {
+                                transaction.Rollback();
+                                return Content(HttpStatusCode.NotFound, new { message = "Usuario no encontrado." });
+                            }
+
+                            connection.Execute(
+                                "DELETE FROM UsuarioRoles WHERE idUsuario = @Id", new { Id = id }, transaction);
+
+                            var perfilIds = connection.Query<int>(
+                                "SELECT id FROM perfilUsuario WHERE idUsuario = @Id", new { Id = id }, transaction).ToList();
+
+                            foreach (var perfilId in perfilIds)
+                            {
+                                connection.Execute(
+                                    "DELETE FROM Telefonos WHERE idPerfilUsuario = @PerfilId", new { PerfilId = perfilId }, transaction);
+                                connection.Execute(
+                                    "DELETE FROM direcciones WHERE idPerfilUsuario = @PerfilId", new { PerfilId = perfilId }, transaction);
+                            }
+
+                            connection.Execute(
+                                "DELETE FROM perfilUsuario WHERE idUsuario = @Id", new { Id = id }, transaction);
+
+                            connection.Execute(
+                                "DELETE FROM usuarios WHERE id = @Id", new { Id = id }, transaction);
+
+                            transaction.Commit();
+                            return Ok(new { message = "Usuario eliminado exitosamente." });
+                        }
+                        catch
+                        {
+                            transaction.Rollback();
+                            throw;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                return InternalServerError(ex);
+            }
         }
     }
 }

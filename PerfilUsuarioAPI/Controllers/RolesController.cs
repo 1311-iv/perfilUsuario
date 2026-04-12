@@ -1,152 +1,167 @@
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.SqlClient;
+using System;
+using System.Configuration;
+using System.Data.SqlClient;
+using System.Net;
+using System.Web.Http;
 using Dapper;
 using PerfilUsuarioAPI.Models;
 
-namespace PerfilUsuarioAPI.Controllers;
-
-[ApiController]
-[Route("api/[controller]")]
-public class RolesController : ControllerBase
+namespace PerfilUsuarioAPI.Controllers
 {
-    private readonly string _connectionString;
-
-    public RolesController(IConfiguration configuration)
+    [RoutePrefix("api/roles")]
+    public class RolesController : ApiController
     {
-        _connectionString = configuration.GetConnectionString("DefaultConnection")!;
-    }
+        private readonly string _connectionString =
+            ConfigurationManager.ConnectionStrings["DefaultConnection"].ConnectionString;
 
-    [HttpGet]
-    public async Task<IActionResult> GetAll([FromQuery] string? nombre = null)
-    {
-        try
+        [HttpGet]
+        [Route("")]
+        public IHttpActionResult GetAll(string nombre = null)
         {
-            using var connection = new SqlConnection(_connectionString);
-
-            if (!string.IsNullOrWhiteSpace(nombre))
+            try
             {
-                var roles = await connection.QueryAsync<Rol>(
-                    "SELECT id, strValor, strDescripcion FROM roles WHERE strValor LIKE @Nombre",
-                    new { Nombre = $"%{nombre}%" });
-                return Ok(roles);
+                using (var connection = new SqlConnection(_connectionString))
+                {
+                    if (!string.IsNullOrWhiteSpace(nombre))
+                    {
+                        var roles = connection.Query<Rol>(
+                            "SELECT id, strValor, strDescripcion FROM roles WHERE strValor LIKE @Nombre",
+                            new { Nombre = "%" + nombre + "%" });
+                        return Ok(roles);
+                    }
+                    else
+                    {
+                        var roles = connection.Query<Rol>(
+                            "SELECT id, strValor, strDescripcion FROM roles");
+                        return Ok(roles);
+                    }
+                }
             }
-            else
+            catch (Exception ex)
             {
-                var roles = await connection.QueryAsync<Rol>(
-                    "SELECT id, strValor, strDescripcion FROM roles");
-                return Ok(roles);
+                return InternalServerError(ex);
             }
         }
-        catch (Exception ex)
+
+        [HttpGet]
+        [Route("{id:int}")]
+        public IHttpActionResult GetById(int id)
         {
-            return StatusCode(500, new { message = "Error interno del servidor.", error = ex.Message });
+            try
+            {
+                using (var connection = new SqlConnection(_connectionString))
+                {
+                    var rol = connection.QueryFirstOrDefault<Rol>(
+                        "SELECT id, strValor, strDescripcion FROM roles WHERE id = @Id", new { Id = id });
+
+                    if (rol == null)
+                        return Content(HttpStatusCode.NotFound, new { message = "Rol no encontrado." });
+
+                    return Ok(rol);
+                }
+            }
+            catch (Exception ex)
+            {
+                return InternalServerError(ex);
+            }
         }
-    }
 
-    [HttpGet("{id}")]
-    public async Task<IActionResult> GetById(int id)
-    {
-        try
+        [HttpPost]
+        [Route("")]
+        public IHttpActionResult Create(Rol rol)
         {
-            using var connection = new SqlConnection(_connectionString);
-            var rol = await connection.QueryFirstOrDefaultAsync<Rol>(
-                "SELECT id, strValor, strDescripcion FROM roles WHERE id = @Id", new { Id = id });
-
-            if (rol == null)
-                return NotFound(new { message = "Rol no encontrado." });
-
-            return Ok(rol);
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, new { message = "Error interno del servidor.", error = ex.Message });
-        }
-    }
-
-    [HttpPost]
-    public async Task<IActionResult> Create([FromBody] Rol rol)
-    {
-        if (string.IsNullOrWhiteSpace(rol.StrValor))
-            return BadRequest(new { message = "El valor del rol es requerido." });
-
-        try
-        {
-            using var connection = new SqlConnection(_connectionString);
-            var id = await connection.QuerySingleAsync<int>(
-                @"INSERT INTO roles (strValor, strDescripcion) VALUES (@StrValor, @StrDescripcion);
-                  SELECT CAST(SCOPE_IDENTITY() AS INT);",
-                rol);
-
-            return CreatedAtAction(nameof(GetById), new { id }, new { id, message = "Rol creado exitosamente." });
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, new { message = "Error interno del servidor.", error = ex.Message });
-        }
-    }
-
-    [HttpPut("{id}")]
-    public async Task<IActionResult> Update(int id, [FromBody] Rol rol)
-    {
-        if (string.IsNullOrWhiteSpace(rol.StrValor))
-            return BadRequest(new { message = "El valor del rol es requerido." });
-
-        try
-        {
-            using var connection = new SqlConnection(_connectionString);
-            var exists = await connection.QueryFirstOrDefaultAsync<int?>(
-                "SELECT id FROM roles WHERE id = @Id", new { Id = id });
-
-            if (exists == null)
-                return NotFound(new { message = "Rol no encontrado." });
-
-            await connection.ExecuteAsync(
-                "UPDATE roles SET strValor = @StrValor, strDescripcion = @StrDescripcion WHERE id = @Id",
-                new { Id = id, rol.StrValor, rol.StrDescripcion });
-
-            return Ok(new { message = "Rol actualizado exitosamente." });
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, new { message = "Error interno del servidor.", error = ex.Message });
-        }
-    }
-
-    [HttpDelete("{id}")]
-    public async Task<IActionResult> Delete(int id)
-    {
-        try
-        {
-            using var connection = new SqlConnection(_connectionString);
-            await connection.OpenAsync();
-            using var transaction = connection.BeginTransaction();
+            if (string.IsNullOrWhiteSpace(rol?.StrValor))
+                return BadRequest("El valor del rol es requerido.");
 
             try
             {
-                var exists = await connection.QueryFirstOrDefaultAsync<int?>(
-                    "SELECT id FROM roles WHERE id = @Id", new { Id = id }, transaction);
-
-                if (exists == null)
+                using (var connection = new SqlConnection(_connectionString))
                 {
-                    transaction.Rollback();
-                    return NotFound(new { message = "Rol no encontrado." });
+                    var id = connection.QuerySingle<int>(
+                        @"INSERT INTO roles (strValor, strDescripcion) VALUES (@StrValor, @StrDescripcion);
+                          SELECT CAST(SCOPE_IDENTITY() AS INT);",
+                        rol);
+
+                    return Content(HttpStatusCode.Created,
+                        new { id, message = "Rol creado exitosamente." });
                 }
-
-                await connection.ExecuteAsync("DELETE FROM UsuarioRoles WHERE idRol = @Id", new { Id = id }, transaction);
-                await connection.ExecuteAsync("DELETE FROM roles WHERE id = @Id", new { Id = id }, transaction);
-
-                transaction.Commit();
-                return Ok(new { message = "Rol eliminado exitosamente." });
             }
-            catch
+            catch (Exception ex)
             {
-                transaction.Rollback();
-                throw;
+                return InternalServerError(ex);
             }
         }
-        catch (Exception ex)
+
+        [HttpPut]
+        [Route("{id:int}")]
+        public IHttpActionResult Update(int id, Rol rol)
         {
-            return StatusCode(500, new { message = "Error interno del servidor.", error = ex.Message });
+            if (string.IsNullOrWhiteSpace(rol?.StrValor))
+                return BadRequest("El valor del rol es requerido.");
+
+            try
+            {
+                using (var connection = new SqlConnection(_connectionString))
+                {
+                    var exists = connection.QueryFirstOrDefault<int?>(
+                        "SELECT id FROM roles WHERE id = @Id", new { Id = id });
+
+                    if (exists == null)
+                        return Content(HttpStatusCode.NotFound, new { message = "Rol no encontrado." });
+
+                    connection.Execute(
+                        "UPDATE roles SET strValor = @StrValor, strDescripcion = @StrDescripcion WHERE id = @Id",
+                        new { Id = id, rol.StrValor, rol.StrDescripcion });
+
+                    return Ok(new { message = "Rol actualizado exitosamente." });
+                }
+            }
+            catch (Exception ex)
+            {
+                return InternalServerError(ex);
+            }
+        }
+
+        [HttpDelete]
+        [Route("{id:int}")]
+        public IHttpActionResult Delete(int id)
+        {
+            try
+            {
+                using (var connection = new SqlConnection(_connectionString))
+                {
+                    connection.Open();
+                    using (var transaction = connection.BeginTransaction())
+                    {
+                        try
+                        {
+                            var exists = connection.QueryFirstOrDefault<int?>(
+                                "SELECT id FROM roles WHERE id = @Id", new { Id = id }, transaction);
+
+                            if (exists == null)
+                            {
+                                transaction.Rollback();
+                                return Content(HttpStatusCode.NotFound, new { message = "Rol no encontrado." });
+                            }
+
+                            connection.Execute("DELETE FROM UsuarioRoles WHERE idRol = @Id", new { Id = id }, transaction);
+                            connection.Execute("DELETE FROM roles WHERE id = @Id", new { Id = id }, transaction);
+
+                            transaction.Commit();
+                            return Ok(new { message = "Rol eliminado exitosamente." });
+                        }
+                        catch
+                        {
+                            transaction.Rollback();
+                            throw;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                return InternalServerError(ex);
+            }
         }
     }
 }

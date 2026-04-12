@@ -1,9 +1,12 @@
-namespace PerfilUsuarioAPI.Models;
+using System.Collections.Generic;
 
-public class UsuarioRequest
+namespace PerfilUsuarioAPI.Models
 {
-    public string Username { get; set; } = string.Empty;
-    public string Password { get; set; } = string.Empty;
-    public bool Suspendido { get; set; }
-    public List<int> RolIds { get; set; } = new();
+    public class UsuarioRequest
+    {
+        public string Username { get; set; }
+        public string Password { get; set; }
+        public bool Suspendido { get; set; }
+        public List<int> RolIds { get; set; } = new List<int>();
+    }
 }

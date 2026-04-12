@@ -1,317 +1,336 @@
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.SqlClient;
+using System;
+using System.Configuration;
+using System.Data.SqlClient;
+using System.Linq;
+using System.Net;
+using System.Web.Http;
 using Dapper;
 using PerfilUsuarioAPI.Models;
 
-namespace PerfilUsuarioAPI.Controllers;
-
-[ApiController]
-[Route("api/[controller]")]
-public class PerfilUsuarioController : ControllerBase
+namespace PerfilUsuarioAPI.Controllers
 {
-    private readonly string _connectionString;
-
-    public PerfilUsuarioController(IConfiguration configuration)
+    [RoutePrefix("api/perfilUsuario")]
+    public class PerfilUsuarioController : ApiController
     {
-        _connectionString = configuration.GetConnectionString("DefaultConnection")!;
-    }
+        private readonly string _connectionString =
+            ConfigurationManager.ConnectionStrings["DefaultConnection"].ConnectionString;
 
-    [HttpGet]
-    public async Task<IActionResult> GetAll()
-    {
-        try
+        [HttpGet]
+        [Route("")]
+        public IHttpActionResult GetAll()
         {
-            using var connection = new SqlConnection(_connectionString);
-            var perfiles = (await connection.QueryAsync<PerfilUsuario>(
-                @"SELECT id, nombre, apellidoPaterno, apellidoMaterno, fechaNacimiento, rfc, idUsuario
-                  FROM perfilUsuario
-                  ORDER BY fechaNacimiento ASC")).ToList();
-
-            foreach (var perfil in perfiles)
+            try
             {
-                perfil.Telefono = await connection.QueryFirstOrDefaultAsync<Telefono>(
-                    "SELECT id, celular, casa, oficina, idPerfilUsuario FROM Telefonos WHERE idPerfilUsuario = @Id",
-                    new { perfil.Id });
+                using (var connection = new SqlConnection(_connectionString))
+                {
+                    var perfiles = connection.Query<PerfilUsuario>(
+                        @"SELECT id, nombre, apellidoPaterno, apellidoMaterno, fechaNacimiento, rfc, idUsuario
+                          FROM perfilUsuario
+                          ORDER BY fechaNacimiento ASC").ToList();
 
-                perfil.Direccion = await connection.QueryFirstOrDefaultAsync<Direccion>(
-                    "SELECT id, calle, colonia, NumInterior, NumExterior, Municipio, idPerfilUsuario FROM direcciones WHERE idPerfilUsuario = @Id",
-                    new { perfil.Id });
+                    foreach (var perfil in perfiles)
+                    {
+                        perfil.Telefono = connection.QueryFirstOrDefault<Telefono>(
+                            "SELECT id, celular, casa, oficina, idPerfilUsuario FROM Telefonos WHERE idPerfilUsuario = @Id",
+                            new { perfil.Id });
+
+                        perfil.Direccion = connection.QueryFirstOrDefault<Direccion>(
+                            "SELECT id, calle, colonia, NumInterior, NumExterior, Municipio, idPerfilUsuario FROM direcciones WHERE idPerfilUsuario = @Id",
+                            new { perfil.Id });
+                    }
+
+                    return Ok(perfiles);
+                }
             }
-
-            return Ok(perfiles);
+            catch (Exception ex)
+            {
+                return InternalServerError(ex);
+            }
         }
-        catch (Exception ex)
+
+        [HttpGet]
+        [Route("{id:int}")]
+        public IHttpActionResult GetById(int id)
         {
-            return StatusCode(500, new { message = "Error interno del servidor.", error = ex.Message });
+            try
+            {
+                using (var connection = new SqlConnection(_connectionString))
+                {
+                    var perfil = connection.QueryFirstOrDefault<PerfilUsuario>(
+                        @"SELECT id, nombre, apellidoPaterno, apellidoMaterno, fechaNacimiento, rfc, idUsuario
+                          FROM perfilUsuario WHERE id = @Id", new { Id = id });
+
+                    if (perfil == null)
+                        return Content(HttpStatusCode.NotFound, new { message = "Perfil no encontrado." });
+
+                    perfil.Telefono = connection.QueryFirstOrDefault<Telefono>(
+                        "SELECT id, celular, casa, oficina, idPerfilUsuario FROM Telefonos WHERE idPerfilUsuario = @Id",
+                        new { perfil.Id });
+
+                    perfil.Direccion = connection.QueryFirstOrDefault<Direccion>(
+                        "SELECT id, calle, colonia, NumInterior, NumExterior, Municipio, idPerfilUsuario FROM direcciones WHERE idPerfilUsuario = @Id",
+                        new { perfil.Id });
+
+                    return Ok(perfil);
+                }
+            }
+            catch (Exception ex)
+            {
+                return InternalServerError(ex);
+            }
         }
-    }
 
-    [HttpGet("{id}")]
-    public async Task<IActionResult> GetById(int id)
-    {
-        try
+        [HttpPost]
+        [Route("")]
+        public IHttpActionResult Create(PerfilUsuarioRequest request)
         {
-            using var connection = new SqlConnection(_connectionString);
-            var perfil = await connection.QueryFirstOrDefaultAsync<PerfilUsuario>(
-                @"SELECT id, nombre, apellidoPaterno, apellidoMaterno, fechaNacimiento, rfc, idUsuario
-                  FROM perfilUsuario WHERE id = @Id", new { Id = id });
-
-            if (perfil == null)
-                return NotFound(new { message = "Perfil no encontrado." });
-
-            perfil.Telefono = await connection.QueryFirstOrDefaultAsync<Telefono>(
-                "SELECT id, celular, casa, oficina, idPerfilUsuario FROM Telefonos WHERE idPerfilUsuario = @Id",
-                new { perfil.Id });
-
-            perfil.Direccion = await connection.QueryFirstOrDefaultAsync<Direccion>(
-                "SELECT id, calle, colonia, NumInterior, NumExterior, Municipio, idPerfilUsuario FROM direcciones WHERE idPerfilUsuario = @Id",
-                new { perfil.Id });
-
-            return Ok(perfil);
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, new { message = "Error interno del servidor.", error = ex.Message });
-        }
-    }
-
-    [HttpPost]
-    public async Task<IActionResult> Create([FromBody] PerfilUsuarioRequest request)
-    {
-        if (string.IsNullOrWhiteSpace(request.Nombre) || string.IsNullOrWhiteSpace(request.ApellidoPaterno))
-            return BadRequest(new { message = "Nombre y apellido paterno son requeridos." });
-
-        try
-        {
-            using var connection = new SqlConnection(_connectionString);
-            await connection.OpenAsync();
-            using var transaction = connection.BeginTransaction();
+            if (string.IsNullOrWhiteSpace(request?.Nombre) || string.IsNullOrWhiteSpace(request?.ApellidoPaterno))
+                return BadRequest("Nombre y apellido paterno son requeridos.");
 
             try
             {
-                var perfilId = await connection.QuerySingleAsync<int>(
-                    @"INSERT INTO perfilUsuario (nombre, apellidoPaterno, apellidoMaterno, fechaNacimiento, rfc, idUsuario)
-                      VALUES (@Nombre, @ApellidoPaterno, @ApellidoMaterno, @FechaNacimiento, @Rfc, @IdUsuario);
-                      SELECT CAST(SCOPE_IDENTITY() AS INT);",
-                    new
-                    {
-                        request.Nombre,
-                        request.ApellidoPaterno,
-                        request.ApellidoMaterno,
-                        request.FechaNacimiento,
-                        request.Rfc,
-                        request.IdUsuario
-                    }, transaction);
-
-                if (request.Telefono != null)
+                using (var connection = new SqlConnection(_connectionString))
                 {
-                    await connection.ExecuteAsync(
-                        @"INSERT INTO Telefonos (celular, casa, oficina, idPerfilUsuario)
-                          VALUES (@Celular, @Casa, @Oficina, @IdPerfilUsuario)",
-                        new
+                    connection.Open();
+                    using (var transaction = connection.BeginTransaction())
+                    {
+                        try
                         {
-                            request.Telefono.Celular,
-                            request.Telefono.Casa,
-                            request.Telefono.Oficina,
-                            IdPerfilUsuario = perfilId
-                        }, transaction);
-                }
+                            var perfilId = connection.QuerySingle<int>(
+                                @"INSERT INTO perfilUsuario (nombre, apellidoPaterno, apellidoMaterno, fechaNacimiento, rfc, idUsuario)
+                                  VALUES (@Nombre, @ApellidoPaterno, @ApellidoMaterno, @FechaNacimiento, @Rfc, @IdUsuario);
+                                  SELECT CAST(SCOPE_IDENTITY() AS INT);",
+                                new
+                                {
+                                    request.Nombre,
+                                    request.ApellidoPaterno,
+                                    request.ApellidoMaterno,
+                                    request.FechaNacimiento,
+                                    request.Rfc,
+                                    request.IdUsuario
+                                }, transaction);
 
-                if (request.Direccion != null)
-                {
-                    await connection.ExecuteAsync(
-                        @"INSERT INTO direcciones (calle, colonia, NumInterior, NumExterior, Municipio, idPerfilUsuario)
-                          VALUES (@Calle, @Colonia, @NumInterior, @NumExterior, @Municipio, @IdPerfilUsuario)",
-                        new
+                            if (request.Telefono != null)
+                            {
+                                connection.Execute(
+                                    @"INSERT INTO Telefonos (celular, casa, oficina, idPerfilUsuario)
+                                      VALUES (@Celular, @Casa, @Oficina, @IdPerfilUsuario)",
+                                    new
+                                    {
+                                        request.Telefono.Celular,
+                                        request.Telefono.Casa,
+                                        request.Telefono.Oficina,
+                                        IdPerfilUsuario = perfilId
+                                    }, transaction);
+                            }
+
+                            if (request.Direccion != null)
+                            {
+                                connection.Execute(
+                                    @"INSERT INTO direcciones (calle, colonia, NumInterior, NumExterior, Municipio, idPerfilUsuario)
+                                      VALUES (@Calle, @Colonia, @NumInterior, @NumExterior, @Municipio, @IdPerfilUsuario)",
+                                    new
+                                    {
+                                        request.Direccion.Calle,
+                                        request.Direccion.Colonia,
+                                        request.Direccion.NumInterior,
+                                        request.Direccion.NumExterior,
+                                        request.Direccion.Municipio,
+                                        IdPerfilUsuario = perfilId
+                                    }, transaction);
+                            }
+
+                            transaction.Commit();
+                            return Content(HttpStatusCode.Created,
+                                new { id = perfilId, message = "Perfil creado exitosamente." });
+                        }
+                        catch
                         {
-                            request.Direccion.Calle,
-                            request.Direccion.Colonia,
-                            request.Direccion.NumInterior,
-                            request.Direccion.NumExterior,
-                            request.Direccion.Municipio,
-                            IdPerfilUsuario = perfilId
-                        }, transaction);
+                            transaction.Rollback();
+                            throw;
+                        }
+                    }
                 }
-
-                transaction.Commit();
-                return CreatedAtAction(nameof(GetById), new { id = perfilId }, new { id = perfilId, message = "Perfil creado exitosamente." });
             }
-            catch
+            catch (Exception ex)
             {
-                transaction.Rollback();
-                throw;
+                return InternalServerError(ex);
             }
         }
-        catch (Exception ex)
-        {
-            return StatusCode(500, new { message = "Error interno del servidor.", error = ex.Message });
-        }
-    }
 
-    [HttpPut("{id}")]
-    public async Task<IActionResult> Update(int id, [FromBody] PerfilUsuarioRequest request)
-    {
-        if (string.IsNullOrWhiteSpace(request.Nombre) || string.IsNullOrWhiteSpace(request.ApellidoPaterno))
-            return BadRequest(new { message = "Nombre y apellido paterno son requeridos." });
-
-        try
+        [HttpPut]
+        [Route("{id:int}")]
+        public IHttpActionResult Update(int id, PerfilUsuarioRequest request)
         {
-            using var connection = new SqlConnection(_connectionString);
-            await connection.OpenAsync();
-            using var transaction = connection.BeginTransaction();
+            if (string.IsNullOrWhiteSpace(request?.Nombre) || string.IsNullOrWhiteSpace(request?.ApellidoPaterno))
+                return BadRequest("Nombre y apellido paterno son requeridos.");
 
             try
             {
-                var exists = await connection.QueryFirstOrDefaultAsync<int?>(
-                    "SELECT id FROM perfilUsuario WHERE id = @Id", new { Id = id }, transaction);
-
-                if (exists == null)
+                using (var connection = new SqlConnection(_connectionString))
                 {
-                    transaction.Rollback();
-                    return NotFound(new { message = "Perfil no encontrado." });
+                    connection.Open();
+                    using (var transaction = connection.BeginTransaction())
+                    {
+                        try
+                        {
+                            var exists = connection.QueryFirstOrDefault<int?>(
+                                "SELECT id FROM perfilUsuario WHERE id = @Id", new { Id = id }, transaction);
+
+                            if (exists == null)
+                            {
+                                transaction.Rollback();
+                                return Content(HttpStatusCode.NotFound, new { message = "Perfil no encontrado." });
+                            }
+
+                            connection.Execute(
+                                @"UPDATE perfilUsuario SET nombre = @Nombre, apellidoPaterno = @ApellidoPaterno,
+                                  apellidoMaterno = @ApellidoMaterno, fechaNacimiento = @FechaNacimiento,
+                                  rfc = @Rfc, idUsuario = @IdUsuario WHERE id = @Id",
+                                new
+                                {
+                                    Id = id,
+                                    request.Nombre,
+                                    request.ApellidoPaterno,
+                                    request.ApellidoMaterno,
+                                    request.FechaNacimiento,
+                                    request.Rfc,
+                                    request.IdUsuario
+                                }, transaction);
+
+                            if (request.Telefono != null)
+                            {
+                                var telExists = connection.QueryFirstOrDefault<int?>(
+                                    "SELECT id FROM Telefonos WHERE idPerfilUsuario = @Id", new { Id = id }, transaction);
+
+                                if (telExists != null)
+                                {
+                                    connection.Execute(
+                                        @"UPDATE Telefonos SET celular = @Celular, casa = @Casa, oficina = @Oficina
+                                          WHERE idPerfilUsuario = @IdPerfilUsuario",
+                                        new
+                                        {
+                                            request.Telefono.Celular,
+                                            request.Telefono.Casa,
+                                            request.Telefono.Oficina,
+                                            IdPerfilUsuario = id
+                                        }, transaction);
+                                }
+                                else
+                                {
+                                    connection.Execute(
+                                        @"INSERT INTO Telefonos (celular, casa, oficina, idPerfilUsuario)
+                                          VALUES (@Celular, @Casa, @Oficina, @IdPerfilUsuario)",
+                                        new
+                                        {
+                                            request.Telefono.Celular,
+                                            request.Telefono.Casa,
+                                            request.Telefono.Oficina,
+                                            IdPerfilUsuario = id
+                                        }, transaction);
+                                }
+                            }
+
+                            if (request.Direccion != null)
+                            {
+                                var dirExists = connection.QueryFirstOrDefault<int?>(
+                                    "SELECT id FROM direcciones WHERE idPerfilUsuario = @Id", new { Id = id }, transaction);
+
+                                if (dirExists != null)
+                                {
+                                    connection.Execute(
+                                        @"UPDATE direcciones SET calle = @Calle, colonia = @Colonia, NumInterior = @NumInterior,
+                                          NumExterior = @NumExterior, Municipio = @Municipio WHERE idPerfilUsuario = @IdPerfilUsuario",
+                                        new
+                                        {
+                                            request.Direccion.Calle,
+                                            request.Direccion.Colonia,
+                                            request.Direccion.NumInterior,
+                                            request.Direccion.NumExterior,
+                                            request.Direccion.Municipio,
+                                            IdPerfilUsuario = id
+                                        }, transaction);
+                                }
+                                else
+                                {
+                                    connection.Execute(
+                                        @"INSERT INTO direcciones (calle, colonia, NumInterior, NumExterior, Municipio, idPerfilUsuario)
+                                          VALUES (@Calle, @Colonia, @NumInterior, @NumExterior, @Municipio, @IdPerfilUsuario)",
+                                        new
+                                        {
+                                            request.Direccion.Calle,
+                                            request.Direccion.Colonia,
+                                            request.Direccion.NumInterior,
+                                            request.Direccion.NumExterior,
+                                            request.Direccion.Municipio,
+                                            IdPerfilUsuario = id
+                                        }, transaction);
+                                }
+                            }
+
+                            transaction.Commit();
+                            return Ok(new { message = "Perfil actualizado exitosamente." });
+                        }
+                        catch
+                        {
+                            transaction.Rollback();
+                            throw;
+                        }
+                    }
                 }
-
-                await connection.ExecuteAsync(
-                    @"UPDATE perfilUsuario SET nombre = @Nombre, apellidoPaterno = @ApellidoPaterno,
-                      apellidoMaterno = @ApellidoMaterno, fechaNacimiento = @FechaNacimiento,
-                      rfc = @Rfc, idUsuario = @IdUsuario WHERE id = @Id",
-                    new
-                    {
-                        Id = id,
-                        request.Nombre,
-                        request.ApellidoPaterno,
-                        request.ApellidoMaterno,
-                        request.FechaNacimiento,
-                        request.Rfc,
-                        request.IdUsuario
-                    }, transaction);
-
-                if (request.Telefono != null)
-                {
-                    var telExists = await connection.QueryFirstOrDefaultAsync<int?>(
-                        "SELECT id FROM Telefonos WHERE idPerfilUsuario = @Id", new { Id = id }, transaction);
-
-                    if (telExists != null)
-                    {
-                        await connection.ExecuteAsync(
-                            @"UPDATE Telefonos SET celular = @Celular, casa = @Casa, oficina = @Oficina
-                              WHERE idPerfilUsuario = @IdPerfilUsuario",
-                            new
-                            {
-                                request.Telefono.Celular,
-                                request.Telefono.Casa,
-                                request.Telefono.Oficina,
-                                IdPerfilUsuario = id
-                            }, transaction);
-                    }
-                    else
-                    {
-                        await connection.ExecuteAsync(
-                            @"INSERT INTO Telefonos (celular, casa, oficina, idPerfilUsuario)
-                              VALUES (@Celular, @Casa, @Oficina, @IdPerfilUsuario)",
-                            new
-                            {
-                                request.Telefono.Celular,
-                                request.Telefono.Casa,
-                                request.Telefono.Oficina,
-                                IdPerfilUsuario = id
-                            }, transaction);
-                    }
-                }
-
-                if (request.Direccion != null)
-                {
-                    var dirExists = await connection.QueryFirstOrDefaultAsync<int?>(
-                        "SELECT id FROM direcciones WHERE idPerfilUsuario = @Id", new { Id = id }, transaction);
-
-                    if (dirExists != null)
-                    {
-                        await connection.ExecuteAsync(
-                            @"UPDATE direcciones SET calle = @Calle, colonia = @Colonia, NumInterior = @NumInterior,
-                              NumExterior = @NumExterior, Municipio = @Municipio WHERE idPerfilUsuario = @IdPerfilUsuario",
-                            new
-                            {
-                                request.Direccion.Calle,
-                                request.Direccion.Colonia,
-                                request.Direccion.NumInterior,
-                                request.Direccion.NumExterior,
-                                request.Direccion.Municipio,
-                                IdPerfilUsuario = id
-                            }, transaction);
-                    }
-                    else
-                    {
-                        await connection.ExecuteAsync(
-                            @"INSERT INTO direcciones (calle, colonia, NumInterior, NumExterior, Municipio, idPerfilUsuario)
-                              VALUES (@Calle, @Colonia, @NumInterior, @NumExterior, @Municipio, @IdPerfilUsuario)",
-                            new
-                            {
-                                request.Direccion.Calle,
-                                request.Direccion.Colonia,
-                                request.Direccion.NumInterior,
-                                request.Direccion.NumExterior,
-                                request.Direccion.Municipio,
-                                IdPerfilUsuario = id
-                            }, transaction);
-                    }
-                }
-
-                transaction.Commit();
-                return Ok(new { message = "Perfil actualizado exitosamente." });
             }
-            catch
+            catch (Exception ex)
             {
-                transaction.Rollback();
-                throw;
+                return InternalServerError(ex);
             }
         }
-        catch (Exception ex)
-        {
-            return StatusCode(500, new { message = "Error interno del servidor.", error = ex.Message });
-        }
-    }
 
-    [HttpDelete("{id}")]
-    public async Task<IActionResult> Delete(int id)
-    {
-        try
+        [HttpDelete]
+        [Route("{id:int}")]
+        public IHttpActionResult Delete(int id)
         {
-            using var connection = new SqlConnection(_connectionString);
-            await connection.OpenAsync();
-            using var transaction = connection.BeginTransaction();
-
             try
             {
-                var exists = await connection.QueryFirstOrDefaultAsync<int?>(
-                    "SELECT id FROM perfilUsuario WHERE id = @Id", new { Id = id }, transaction);
-
-                if (exists == null)
+                using (var connection = new SqlConnection(_connectionString))
                 {
-                    transaction.Rollback();
-                    return NotFound(new { message = "Perfil no encontrado." });
+                    connection.Open();
+                    using (var transaction = connection.BeginTransaction())
+                    {
+                        try
+                        {
+                            var exists = connection.QueryFirstOrDefault<int?>(
+                                "SELECT id FROM perfilUsuario WHERE id = @Id", new { Id = id }, transaction);
+
+                            if (exists == null)
+                            {
+                                transaction.Rollback();
+                                return Content(HttpStatusCode.NotFound, new { message = "Perfil no encontrado." });
+                            }
+
+                            connection.Execute(
+                                "DELETE FROM Telefonos WHERE idPerfilUsuario = @Id", new { Id = id }, transaction);
+
+                            connection.Execute(
+                                "DELETE FROM direcciones WHERE idPerfilUsuario = @Id", new { Id = id }, transaction);
+
+                            connection.Execute(
+                                "DELETE FROM perfilUsuario WHERE id = @Id", new { Id = id }, transaction);
+
+                            transaction.Commit();
+                            return Ok(new { message = "Perfil eliminado exitosamente." });
+                        }
+                        catch
+                        {
+                            transaction.Rollback();
+                            throw;
+                        }
+                    }
                 }
-
-                await connection.ExecuteAsync(
-                    "DELETE FROM Telefonos WHERE idPerfilUsuario = @Id", new { Id = id }, transaction);
-
-                await connection.ExecuteAsync(
-                    "DELETE FROM direcciones WHERE idPerfilUsuario = @Id", new { Id = id }, transaction);
-
-                await connection.ExecuteAsync(
-                    "DELETE FROM perfilUsuario WHERE id = @Id", new { Id = id }, transaction);
-
-                transaction.Commit();
-                return Ok(new { message = "Perfil eliminado exitosamente." });
             }
-            catch
+            catch (Exception ex)
             {
-                transaction.Rollback();
-                throw;
+                return InternalServerError(ex);
             }
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, new { message = "Error interno del servidor.", error = ex.Message });
         }
     }
 }

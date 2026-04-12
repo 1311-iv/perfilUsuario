@@ -1,137 +1,152 @@
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.SqlClient;
+using System;
+using System.Configuration;
+using System.Data.SqlClient;
+using System.Net;
+using System.Web.Http;
 using Dapper;
 using PerfilUsuarioAPI.Models;
 
-namespace PerfilUsuarioAPI.Controllers;
-
-[ApiController]
-[Route("api/[controller]")]
-public class DireccionesController : ControllerBase
+namespace PerfilUsuarioAPI.Controllers
 {
-    private readonly string _connectionString;
-
-    public DireccionesController(IConfiguration configuration)
+    [RoutePrefix("api/direcciones")]
+    public class DireccionesController : ApiController
     {
-        _connectionString = configuration.GetConnectionString("DefaultConnection")!;
-    }
+        private readonly string _connectionString =
+            ConfigurationManager.ConnectionStrings["DefaultConnection"].ConnectionString;
 
-    [HttpGet]
-    public async Task<IActionResult> GetAll()
-    {
-        try
+        [HttpGet]
+        [Route("")]
+        public IHttpActionResult GetAll()
         {
-            using var connection = new SqlConnection(_connectionString);
-            var direcciones = await connection.QueryAsync<Direccion>(
-                "SELECT id, calle, colonia, NumInterior, NumExterior, Municipio, idPerfilUsuario FROM direcciones");
-            return Ok(direcciones);
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, new { message = "Error interno del servidor.", error = ex.Message });
-        }
-    }
-
-    [HttpGet("{id}")]
-    public async Task<IActionResult> GetById(int id)
-    {
-        try
-        {
-            using var connection = new SqlConnection(_connectionString);
-            var direccion = await connection.QueryFirstOrDefaultAsync<Direccion>(
-                "SELECT id, calle, colonia, NumInterior, NumExterior, Municipio, idPerfilUsuario FROM direcciones WHERE id = @Id",
-                new { Id = id });
-
-            if (direccion == null)
-                return NotFound(new { message = "Dirección no encontrada." });
-
-            return Ok(direccion);
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, new { message = "Error interno del servidor.", error = ex.Message });
-        }
-    }
-
-    [HttpPost]
-    public async Task<IActionResult> Create([FromBody] Direccion direccion)
-    {
-        if (string.IsNullOrWhiteSpace(direccion.Calle))
-            return BadRequest(new { message = "La calle es requerida." });
-
-        try
-        {
-            using var connection = new SqlConnection(_connectionString);
-            var id = await connection.QuerySingleAsync<int>(
-                @"INSERT INTO direcciones (calle, colonia, NumInterior, NumExterior, Municipio, idPerfilUsuario)
-                  VALUES (@Calle, @Colonia, @NumInterior, @NumExterior, @Municipio, @IdPerfilUsuario);
-                  SELECT CAST(SCOPE_IDENTITY() AS INT);",
-                direccion);
-
-            return CreatedAtAction(nameof(GetById), new { id }, new { id, message = "Dirección creada exitosamente." });
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, new { message = "Error interno del servidor.", error = ex.Message });
-        }
-    }
-
-    [HttpPut("{id}")]
-    public async Task<IActionResult> Update(int id, [FromBody] Direccion direccion)
-    {
-        if (string.IsNullOrWhiteSpace(direccion.Calle))
-            return BadRequest(new { message = "La calle es requerida." });
-
-        try
-        {
-            using var connection = new SqlConnection(_connectionString);
-            var exists = await connection.QueryFirstOrDefaultAsync<int?>(
-                "SELECT id FROM direcciones WHERE id = @Id", new { Id = id });
-
-            if (exists == null)
-                return NotFound(new { message = "Dirección no encontrada." });
-
-            await connection.ExecuteAsync(
-                @"UPDATE direcciones SET calle = @Calle, colonia = @Colonia, NumInterior = @NumInterior,
-                  NumExterior = @NumExterior, Municipio = @Municipio, idPerfilUsuario = @IdPerfilUsuario
-                  WHERE id = @Id",
-                new
+            try
+            {
+                using (var connection = new SqlConnection(_connectionString))
                 {
-                    Id = id,
-                    direccion.Calle,
-                    direccion.Colonia,
-                    direccion.NumInterior,
-                    direccion.NumExterior,
-                    direccion.Municipio,
-                    direccion.IdPerfilUsuario
-                });
-
-            return Ok(new { message = "Dirección actualizada exitosamente." });
+                    var direcciones = connection.Query<Direccion>(
+                        "SELECT id, calle, colonia, NumInterior, NumExterior, Municipio, idPerfilUsuario FROM direcciones");
+                    return Ok(direcciones);
+                }
+            }
+            catch (Exception ex)
+            {
+                return InternalServerError(ex);
+            }
         }
-        catch (Exception ex)
+
+        [HttpGet]
+        [Route("{id:int}")]
+        public IHttpActionResult GetById(int id)
         {
-            return StatusCode(500, new { message = "Error interno del servidor.", error = ex.Message });
+            try
+            {
+                using (var connection = new SqlConnection(_connectionString))
+                {
+                    var direccion = connection.QueryFirstOrDefault<Direccion>(
+                        "SELECT id, calle, colonia, NumInterior, NumExterior, Municipio, idPerfilUsuario FROM direcciones WHERE id = @Id",
+                        new { Id = id });
+
+                    if (direccion == null)
+                        return Content(HttpStatusCode.NotFound, new { message = "Dirección no encontrada." });
+
+                    return Ok(direccion);
+                }
+            }
+            catch (Exception ex)
+            {
+                return InternalServerError(ex);
+            }
         }
-    }
 
-    [HttpDelete("{id}")]
-    public async Task<IActionResult> Delete(int id)
-    {
-        try
+        [HttpPost]
+        [Route("")]
+        public IHttpActionResult Create(Direccion direccion)
         {
-            using var connection = new SqlConnection(_connectionString);
-            var exists = await connection.QueryFirstOrDefaultAsync<int?>(
-                "SELECT id FROM direcciones WHERE id = @Id", new { Id = id });
+            if (string.IsNullOrWhiteSpace(direccion?.Calle))
+                return BadRequest("La calle es requerida.");
 
-            if (exists == null)
-                return NotFound(new { message = "Dirección no encontrada." });
+            try
+            {
+                using (var connection = new SqlConnection(_connectionString))
+                {
+                    var id = connection.QuerySingle<int>(
+                        @"INSERT INTO direcciones (calle, colonia, NumInterior, NumExterior, Municipio, idPerfilUsuario)
+                          VALUES (@Calle, @Colonia, @NumInterior, @NumExterior, @Municipio, @IdPerfilUsuario);
+                          SELECT CAST(SCOPE_IDENTITY() AS INT);",
+                        direccion);
 
-            await connection.ExecuteAsync("DELETE FROM direcciones WHERE id = @Id", new { Id = id });
-            return Ok(new { message = "Dirección eliminada exitosamente." });
+                    return Content(HttpStatusCode.Created,
+                        new { id, message = "Dirección creada exitosamente." });
+                }
+            }
+            catch (Exception ex)
+            {
+                return InternalServerError(ex);
+            }
         }
-        catch (Exception ex)
+
+        [HttpPut]
+        [Route("{id:int}")]
+        public IHttpActionResult Update(int id, Direccion direccion)
         {
-            return StatusCode(500, new { message = "Error interno del servidor.", error = ex.Message });
+            if (string.IsNullOrWhiteSpace(direccion?.Calle))
+                return BadRequest("La calle es requerida.");
+
+            try
+            {
+                using (var connection = new SqlConnection(_connectionString))
+                {
+                    var exists = connection.QueryFirstOrDefault<int?>(
+                        "SELECT id FROM direcciones WHERE id = @Id", new { Id = id });
+
+                    if (exists == null)
+                        return Content(HttpStatusCode.NotFound, new { message = "Dirección no encontrada." });
+
+                    connection.Execute(
+                        @"UPDATE direcciones SET calle = @Calle, colonia = @Colonia, NumInterior = @NumInterior,
+                          NumExterior = @NumExterior, Municipio = @Municipio, idPerfilUsuario = @IdPerfilUsuario
+                          WHERE id = @Id",
+                        new
+                        {
+                            Id = id,
+                            direccion.Calle,
+                            direccion.Colonia,
+                            direccion.NumInterior,
+                            direccion.NumExterior,
+                            direccion.Municipio,
+                            direccion.IdPerfilUsuario
+                        });
+
+                    return Ok(new { message = "Dirección actualizada exitosamente." });
+                }
+            }
+            catch (Exception ex)
+            {
+                return InternalServerError(ex);
+            }
+        }
+
+        [HttpDelete]
+        [Route("{id:int}")]
+        public IHttpActionResult Delete(int id)
+        {
+            try
+            {
+                using (var connection = new SqlConnection(_connectionString))
+                {
+                    var exists = connection.QueryFirstOrDefault<int?>(
+                        "SELECT id FROM direcciones WHERE id = @Id", new { Id = id });
+
+                    if (exists == null)
+                        return Content(HttpStatusCode.NotFound, new { message = "Dirección no encontrada." });
+
+                    connection.Execute("DELETE FROM direcciones WHERE id = @Id", new { Id = id });
+                    return Ok(new { message = "Dirección eliminada exitosamente." });
+                }
+            }
+            catch (Exception ex)
+            {
+                return InternalServerError(ex);
+            }
         }
     }
 }

@@ -1,8 +1,9 @@
-namespace PerfilUsuarioAPI.Models;
-
-public class Rol
+namespace PerfilUsuarioAPI.Models
 {
-    public int Id { get; set; }
-    public string StrValor { get; set; } = string.Empty;
-    public string StrDescripcion { get; set; } = string.Empty;
+    public class Rol
+    {
+        public int Id { get; set; }
+        public string StrValor { get; set; }
+        public string StrDescripcion { get; set; }
+    }
 }
