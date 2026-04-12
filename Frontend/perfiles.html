@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Perfiles - Sistema de Perfiles</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <nav>
+        <span class="brand">Sistema de Perfiles</span>
+        <a href="perfiles.html" class="active">Perfiles</a>
+        <a href="perfil-form.html">Nuevo Perfil</a>
+        <a href="direcciones.html">Direcciones</a>
+        <a href="roles.html">Roles</a>
+        <a href="usuarios.html">Usuarios</a>
+        <a href="login.html">Salir</a>
+    </nav>
+
+    <div class="container">
+        <h1>Perfiles de Usuario</h1>
+        <div class="btn-group" style="margin-bottom:1rem;">
+            <a href="perfil-form.html" class="btn btn-success">+ Nuevo Perfil</a>
+        </div>
+
+        <div id="alert" class="alert"></div>
+
+        <div class="card" style="overflow-x:auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Nombre Completo</th>
+                        <th>Fecha Nacimiento</th>
+                        <th>RFC</th>
+                        <th>Teléfono Celular</th>
+                        <th>Calle</th>
+                        <th>Municipio</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                    <tr><td colspan="8" style="text-align:center;">Cargando...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script>
+        const tableBody = document.getElementById('tableBody');
+        const alertDiv = document.getElementById('alert');
+
+        function showAlert(msg, type) {
+            alertDiv.className = 'alert alert-' + type;
+            alertDiv.textContent = msg;
+        }
+
+        function formatDate(d) {
+            if (!d) return '—';
+            return new Date(d).toLocaleDateString('es-MX');
+        }
+
+        async function loadPerfiles() {
+            try {
+                const res = await fetch(`${API_BASE}/perfilUsuario`);
+                if (!res.ok) throw new Error('Error al cargar perfiles');
+                const perfiles = await res.json();
+
+                if (perfiles.length === 0) {
+                    tableBody.innerHTML = '<tr><td colspan="8" style="text-align:center;">No hay perfiles registrados.</td></tr>';
+                    return;
+                }
+
+                tableBody.innerHTML = perfiles.map(p => `
+                    <tr>
+                        <td>${p.id}</td>
+                        <td>${p.nombre} ${p.apellidoPaterno} ${p.apellidoMaterno || ''}</td>
+                        <td>${formatDate(p.fechaNacimiento)}</td>
+                        <td>${p.rfc || '—'}</td>
+                        <td>${p.telefono ? p.telefono.celular : '—'}</td>
+                        <td>${p.direccion ? p.direccion.calle : '—'}</td>
+                        <td>${p.direccion ? p.direccion.municipio : '—'}</td>
+                        <td>
+                            <a href="perfil-detalle.html?id=${p.id}" class="btn btn-sm btn-primary">Ver</a>
+                            <a href="perfil-form.html?id=${p.id}" class="btn btn-sm btn-secondary">Editar</a>
+                            <button class="btn btn-sm btn-danger" onclick="deletePerfil(${p.id})">Eliminar</button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (err) {
+                tableBody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#ef4444;">Error al cargar datos.</td></tr>';
+            }
+        }
+
+        async function deletePerfil(id) {
+            if (!confirm('¿Estás seguro de eliminar este perfil?')) return;
+            try {
+                const res = await fetch(`${API_BASE}/perfilUsuario/${id}`, { method: 'DELETE' });
+                const data = await res.json();
+                if (res.ok) {
+                    showAlert(data.message, 'success');
+                    loadPerfiles();
+                } else {
+                    showAlert(data.message || 'Error al eliminar.', 'error');
+                }
+            } catch (err) {
+                showAlert('Error de conexión.', 'error');
+            }
+        }
+
+        loadPerfiles();
+    </script>
+</body>
+</html>

@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Formulario de Perfil</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <nav>
+        <span class="brand">Sistema de Perfiles</span>
+        <a href="perfiles.html">Perfiles</a>
+        <a href="perfil-form.html" class="active">Nuevo Perfil</a>
+        <a href="direcciones.html">Direcciones</a>
+        <a href="roles.html">Roles</a>
+        <a href="usuarios.html">Usuarios</a>
+        <a href="login.html">Salir</a>
+    </nav>
+
+    <div class="container">
+        <h1 id="pageTitle">Nuevo Perfil</h1>
+        <div id="alert" class="alert"></div>
+
+        <form id="perfilForm" class="card">
+            <h2>Datos Personales</h2>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="nombre">Nombre *</label>
+                    <input type="text" id="nombre" maxlength="100" required>
+                </div>
+                <div class="form-group">
+                    <label for="apellidoPaterno">Apellido Paterno *</label>
+                    <input type="text" id="apellidoPaterno" maxlength="100" required>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="apellidoMaterno">Apellido Materno</label>
+                    <input type="text" id="apellidoMaterno" maxlength="100">
+                </div>
+                <div class="form-group">
+                    <label for="fechaNacimiento">Fecha de Nacimiento</label>
+                    <input type="date" id="fechaNacimiento">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="rfc">RFC</label>
+                    <input type="text" id="rfc" maxlength="30">
+                </div>
+                <div class="form-group">
+                    <label for="idUsuario">ID Usuario</label>
+                    <input type="number" id="idUsuario" min="1">
+                </div>
+            </div>
+
+            <hr style="margin:1.5rem 0;border:none;border-top:1px solid #e5e7eb;">
+            <h2>Teléfonos</h2>
+            <div class="form-row-3">
+                <div class="form-group">
+                    <label for="celular">Celular</label>
+                    <input type="text" id="celular" maxlength="10" pattern="[0-9]*">
+                </div>
+                <div class="form-group">
+                    <label for="casa">Casa</label>
+                    <input type="text" id="casa" maxlength="10" pattern="[0-9]*">
+                </div>
+                <div class="form-group">
+                    <label for="oficina">Oficina</label>
+                    <input type="text" id="oficina" maxlength="10" pattern="[0-9]*">
+                </div>
+            </div>
+
+            <hr style="margin:1.5rem 0;border:none;border-top:1px solid #e5e7eb;">
+            <h2>Dirección</h2>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="calle">Calle</label>
+                    <input type="text" id="calle" maxlength="100">
+                </div>
+                <div class="form-group">
+                    <label for="colonia">Colonia</label>
+                    <input type="text" id="colonia" maxlength="150">
+                </div>
+            </div>
+            <div class="form-row-3">
+                <div class="form-group">
+                    <label for="numInterior">Num. Interior</label>
+                    <input type="text" id="numInterior" maxlength="30">
+                </div>
+                <div class="form-group">
+                    <label for="numExterior">Num. Exterior</label>
+                    <input type="text" id="numExterior" maxlength="30">
+                </div>
+                <div class="form-group">
+                    <label for="municipio">Municipio</label>
+                    <input type="text" id="municipio" maxlength="50">
+                </div>
+            </div>
+
+            <div class="btn-group">
+                <button type="submit" class="btn btn-primary" id="submitBtn">Guardar Perfil</button>
+                <a href="perfiles.html" class="btn btn-secondary">Cancelar</a>
+            </div>
+        </form>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script>
+        const form = document.getElementById('perfilForm');
+        const alertDiv = document.getElementById('alert');
+        const params = new URLSearchParams(window.location.search);
+        const editId = params.get('id');
+
+        function showAlert(msg, type) {
+            alertDiv.className = 'alert alert-' + type;
+            alertDiv.textContent = msg;
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function validate() {
+            let valid = true;
+            document.querySelectorAll('.error-field').forEach(el => el.classList.remove('error-field'));
+            document.querySelectorAll('.error-msg').forEach(el => el.remove());
+
+            const nombre = document.getElementById('nombre');
+            const apPat = document.getElementById('apellidoPaterno');
+
+            if (!nombre.value.trim()) {
+                nombre.classList.add('error-field');
+                nombre.insertAdjacentHTML('afterend', '<span class="error-msg">El nombre es requerido.</span>');
+                valid = false;
+            }
+            if (!apPat.value.trim()) {
+                apPat.classList.add('error-field');
+                apPat.insertAdjacentHTML('afterend', '<span class="error-msg">El apellido paterno es requerido.</span>');
+                valid = false;
+            }
+
+            const celular = document.getElementById('celular').value.trim();
+            if (celular && !/^\d{1,10}$/.test(celular)) {
+                document.getElementById('celular').classList.add('error-field');
+                document.getElementById('celular').insertAdjacentHTML('afterend', '<span class="error-msg">Solo dígitos (máx 10).</span>');
+                valid = false;
+            }
+
+            return valid;
+        }
+
+        async function loadPerfil() {
+            if (!editId) return;
+            document.getElementById('pageTitle').textContent = 'Editar Perfil';
+            document.getElementById('submitBtn').textContent = 'Actualizar Perfil';
+
+            try {
+                const res = await fetch(`${API_BASE}/perfilUsuario/${editId}`);
+                if (!res.ok) { showAlert('Perfil no encontrado.', 'error'); return; }
+                const p = await res.json();
+
+                document.getElementById('nombre').value = p.nombre || '';
+                document.getElementById('apellidoPaterno').value = p.apellidoPaterno || '';
+                document.getElementById('apellidoMaterno').value = p.apellidoMaterno || '';
+                document.getElementById('fechaNacimiento').value = p.fechaNacimiento ? p.fechaNacimiento.split('T')[0] : '';
+                document.getElementById('rfc').value = p.rfc || '';
+                document.getElementById('idUsuario').value = p.idUsuario || '';
+
+                if (p.telefono) {
+                    document.getElementById('celular').value = p.telefono.celular || '';
+                    document.getElementById('casa').value = p.telefono.casa || '';
+                    document.getElementById('oficina').value = p.telefono.oficina || '';
+                }
+
+                if (p.direccion) {
+                    document.getElementById('calle').value = p.direccion.calle || '';
+                    document.getElementById('colonia').value = p.direccion.colonia || '';
+                    document.getElementById('numInterior').value = p.direccion.numInterior || '';
+                    document.getElementById('numExterior').value = p.direccion.numExterior || '';
+                    document.getElementById('municipio').value = p.direccion.municipio || '';
+                }
+            } catch (err) {
+                showAlert('Error al cargar el perfil.', 'error');
+            }
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!validate()) return;
+
+            const body = {
+                nombre: document.getElementById('nombre').value.trim(),
+                apellidoPaterno: document.getElementById('apellidoPaterno').value.trim(),
+                apellidoMaterno: document.getElementById('apellidoMaterno').value.trim(),
+                fechaNacimiento: document.getElementById('fechaNacimiento').value || null,
+                rfc: document.getElementById('rfc').value.trim(),
+                idUsuario: parseInt(document.getElementById('idUsuario').value) || 0,
+                telefono: {
+                    celular: document.getElementById('celular').value.trim(),
+                    casa: document.getElementById('casa').value.trim(),
+                    oficina: document.getElementById('oficina').value.trim()
+                },
+                direccion: {
+                    calle: document.getElementById('calle').value.trim(),
+                    colonia: document.getElementById('colonia').value.trim(),
+                    numInterior: document.getElementById('numInterior').value.trim(),
+                    numExterior: document.getElementById('numExterior').value.trim(),
+                    municipio: document.getElementById('municipio').value.trim()
+                }
+            };
+
+            const url = editId ? `${API_BASE}/perfilUsuario/${editId}` : `${API_BASE}/perfilUsuario`;
+            const method = editId ? 'PUT' : 'POST';
+
+            try {
+                const res = await fetch(url, {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json();
+
+                if (res.ok) {
+                    showAlert(data.message || 'Operación exitosa.', 'success');
+                    if (!editId) setTimeout(() => window.location.href = 'perfiles.html', 1000);
+                } else {
+                    showAlert(data.message || 'Error en la operación.', 'error');
+                }
+            } catch (err) {
+                showAlert('Error de conexión con el servidor.', 'error');
+            }
+        });
+
+        loadPerfil();
+    </script>
+</body>
+</html>

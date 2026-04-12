@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detalle de Perfil</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <nav>
+        <span class="brand">Sistema de Perfiles</span>
+        <a href="perfiles.html">Perfiles</a>
+        <a href="perfil-form.html">Nuevo Perfil</a>
+        <a href="direcciones.html">Direcciones</a>
+        <a href="roles.html">Roles</a>
+        <a href="usuarios.html">Usuarios</a>
+        <a href="login.html">Salir</a>
+    </nav>
+
+    <div class="container">
+        <h1>Detalle del Perfil</h1>
+        <div id="alert" class="alert"></div>
+
+        <div class="card" id="detailCard">
+            <h2>Datos Personales</h2>
+            <div class="detail-grid" id="personalData"></div>
+
+            <hr style="margin:1.5rem 0;border:none;border-top:1px solid #e5e7eb;">
+            <h2>Teléfonos</h2>
+            <div class="detail-grid" id="telefonoData"></div>
+
+            <hr style="margin:1.5rem 0;border:none;border-top:1px solid #e5e7eb;">
+            <h2>Dirección</h2>
+            <div class="detail-grid" id="direccionData"></div>
+
+            <div class="btn-group">
+                <a id="editBtn" href="#" class="btn btn-primary">Editar</a>
+                <a href="perfiles.html" class="btn btn-secondary">Volver</a>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script>
+        const params = new URLSearchParams(window.location.search);
+        const id = params.get('id');
+        const alertDiv = document.getElementById('alert');
+
+        function showAlert(msg, type) {
+            alertDiv.className = 'alert alert-' + type;
+            alertDiv.textContent = msg;
+        }
+
+        function detailItem(label, value) {
+            return `<div class="detail-item"><label>${label}</label><p>${value || '—'}</p></div>`;
+        }
+
+        function formatDate(d) {
+            if (!d) return '—';
+            return new Date(d).toLocaleDateString('es-MX');
+        }
+
+        async function loadDetalle() {
+            if (!id) { showAlert('ID no proporcionado.', 'error'); return; }
+
+            try {
+                const res = await fetch(`${API_BASE}/perfilUsuario/${id}`);
+                if (!res.ok) { showAlert('Perfil no encontrado.', 'error'); return; }
+                const p = await res.json();
+
+                document.getElementById('editBtn').href = `perfil-form.html?id=${p.id}`;
+
+                document.getElementById('personalData').innerHTML =
+                    detailItem('Nombre', p.nombre) +
+                    detailItem('Apellido Paterno', p.apellidoPaterno) +
+                    detailItem('Apellido Materno', p.apellidoMaterno) +
+                    detailItem('Fecha de Nacimiento', formatDate(p.fechaNacimiento)) +
+                    detailItem('RFC', p.rfc) +
+                    detailItem('ID Usuario', p.idUsuario);
+
+                const tel = p.telefono;
+                document.getElementById('telefonoData').innerHTML =
+                    detailItem('Celular', tel ? tel.celular : null) +
+                    detailItem('Casa', tel ? tel.casa : null) +
+                    detailItem('Oficina', tel ? tel.oficina : null);
+
+                const dir = p.direccion;
+                document.getElementById('direccionData').innerHTML =
+                    detailItem('Calle', dir ? dir.calle : null) +
+                    detailItem('Colonia', dir ? dir.colonia : null) +
+                    detailItem('Num. Interior', dir ? dir.numInterior : null) +
+                    detailItem('Num. Exterior', dir ? dir.numExterior : null) +
+                    detailItem('Municipio', dir ? dir.municipio : null);
+            } catch (err) {
+                showAlert('Error al cargar los datos.', 'error');
+            }
+        }
+
+        loadDetalle();
+    </script>
+</body>
+</html>

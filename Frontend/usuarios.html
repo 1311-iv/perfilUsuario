@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Usuarios - Sistema de Perfiles</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <nav>
+        <span class="brand">Sistema de Perfiles</span>
+        <a href="perfiles.html">Perfiles</a>
+        <a href="perfil-form.html">Nuevo Perfil</a>
+        <a href="direcciones.html">Direcciones</a>
+        <a href="roles.html">Roles</a>
+        <a href="usuarios.html" class="active">Usuarios</a>
+        <a href="login.html">Salir</a>
+    </nav>
+
+    <div class="container">
+        <h1>Gestión de Usuarios</h1>
+        <div id="alert" class="alert"></div>
+
+        <!-- FORMULARIO -->
+        <div class="card">
+            <h2 id="formTitle">Nuevo Usuario</h2>
+            <form id="userForm">
+                <input type="hidden" id="editId">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="username">Username *</label>
+                        <input type="text" id="username" maxlength="100" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Password *</label>
+                        <input type="text" id="password" maxlength="100" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="suspendido"> Suspendido
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label>Asignar Roles</label>
+                    <div class="checkbox-list" id="rolesCheckboxes">
+                        <span style="color:#6b7280;font-size:.9rem;">Cargando roles...</span>
+                    </div>
+                </div>
+                <div class="btn-group">
+                    <button type="submit" class="btn btn-primary" id="submitBtn">Guardar</button>
+                    <button type="button" class="btn btn-secondary" onclick="resetForm()">Cancelar</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- TABLA -->
+        <div class="card" style="overflow-x:auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Username</th>
+                        <th>Suspendido</th>
+                        <th>Roles</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                    <tr><td colspan="5" style="text-align:center;">Cargando...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script>
+        const form = document.getElementById('userForm');
+        const alertDiv = document.getElementById('alert');
+        const tableBody = document.getElementById('tableBody');
+        let allRoles = [];
+
+        function showAlert(msg, type) {
+            alertDiv.className = 'alert alert-' + type;
+            alertDiv.textContent = msg;
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function resetForm() {
+            form.reset();
+            document.getElementById('editId').value = '';
+            document.getElementById('formTitle').textContent = 'Nuevo Usuario';
+            document.getElementById('submitBtn').textContent = 'Guardar';
+            document.querySelectorAll('.role-check').forEach(cb => cb.checked = false);
+        }
+
+        async function loadRolesCheckboxes() {
+            try {
+                const res = await fetch(`${API_BASE}/roles`);
+                allRoles = await res.json();
+
+                const container = document.getElementById('rolesCheckboxes');
+                if (allRoles.length === 0) {
+                    container.innerHTML = '<span style="color:#6b7280;font-size:.9rem;">No hay roles disponibles.</span>';
+                    return;
+                }
+
+                container.innerHTML = allRoles.map(r =>
+                    `<label><input type="checkbox" class="role-check" value="${r.id}"> ${r.strValor}</label>`
+                ).join('');
+            } catch (err) {
+                document.getElementById('rolesCheckboxes').innerHTML = '<span style="color:#ef4444;">Error al cargar roles.</span>';
+            }
+        }
+
+        async function loadUsuarios() {
+            try {
+                const res = await fetch(`${API_BASE}/usuarios`);
+                const usuarios = await res.json();
+
+                if (usuarios.length === 0) {
+                    tableBody.innerHTML = '<tr><td colspan="5" style="text-align:center;">Sin usuarios.</td></tr>';
+                    return;
+                }
+
+                tableBody.innerHTML = usuarios.map(u => `
+                    <tr>
+                        <td>${u.id}</td>
+                        <td>${u.username}</td>
+                        <td>${u.suspendido ? 'Sí' : 'No'}</td>
+                        <td>${u.roles.map(r => r.strValor).join(', ') || '—'}</td>
+                        <td>
+                            <button class="btn btn-sm btn-secondary" onclick="editUser(${u.id})">Editar</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteUser(${u.id})">Eliminar</button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (err) {
+                tableBody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#ef4444;">Error al cargar.</td></tr>';
+            }
+        }
+
+        async function editUser(id) {
+            try {
+                const res = await fetch(`${API_BASE}/usuarios/${id}`);
+                if (!res.ok) return;
+                const u = await res.json();
+
+                document.getElementById('editId').value = u.id;
+                document.getElementById('username').value = u.username || '';
+                document.getElementById('password').value = u.password || '';
+                document.getElementById('suspendido').checked = u.suspendido;
+                document.getElementById('formTitle').textContent = 'Editar Usuario';
+                document.getElementById('submitBtn').textContent = 'Actualizar';
+
+                document.querySelectorAll('.role-check').forEach(cb => {
+                    cb.checked = u.roles.some(r => r.id === parseInt(cb.value));
+                });
+
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            } catch (err) {
+                showAlert('Error al cargar usuario.', 'error');
+            }
+        }
+
+        async function deleteUser(id) {
+            if (!confirm('¿Eliminar este usuario?')) return;
+            try {
+                const res = await fetch(`${API_BASE}/usuarios/${id}`, { method: 'DELETE' });
+                const data = await res.json();
+                if (res.ok) { showAlert(data.message, 'success'); loadUsuarios(); }
+                else showAlert(data.message, 'error');
+            } catch (err) {
+                showAlert('Error de conexión.', 'error');
+            }
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value.trim();
+
+            if (!username || !password) {
+                showAlert('Username y password son requeridos.', 'error');
+                return;
+            }
+
+            const rolIds = [];
+            document.querySelectorAll('.role-check:checked').forEach(cb => {
+                rolIds.push(parseInt(cb.value));
+            });
+
+            const body = {
+                username,
+                password,
+                suspendido: document.getElementById('suspendido').checked,
+                rolIds
+            };
+
+            const editId = document.getElementById('editId').value;
+            const url = editId ? `${API_BASE}/usuarios/${editId}` : `${API_BASE}/usuarios`;
+            const method = editId ? 'PUT' : 'POST';
+
+            try {
+                const res = await fetch(url, {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showAlert(data.message, 'success');
+                    resetForm();
+                    loadUsuarios();
+                } else {
+                    showAlert(data.message, 'error');
+                }
+            } catch (err) {
+                showAlert('Error de conexión.', 'error');
+            }
+        });
+
+        loadRolesCheckboxes();
+        loadUsuarios();
+    </script>
+</body>
+</html>
