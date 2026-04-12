@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registro - Sistema de Perfiles</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="login-wrapper">
+        <div class="login-card">
+            <h1>Crear Cuenta</h1>
+            <div id="alert" class="alert"></div>
+            <form id="registroForm">
+                <div class="form-group">
+                    <label for="username">Usuario</label>
+                    <input type="text" id="username" placeholder="Mínimo 4 caracteres" maxlength="100" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">Contraseña</label>
+                    <input type="password" id="password" placeholder="Mínimo 6 caracteres" maxlength="100" required>
+                </div>
+                <div class="form-group">
+                    <label for="confirmPassword">Confirmar Contraseña</label>
+                    <input type="password" id="confirmPassword" placeholder="Repite tu contraseña" maxlength="100" required>
+                </div>
+                <div class="btn-group" style="justify-content:center;">
+                    <button type="submit" class="btn btn-primary" style="width:100%;">Registrarse</button>
+                </div>
+            </form>
+            <p style="text-align:center;margin-top:1rem;font-size:.9rem;">
+                ¿Ya tienes cuenta? <a href="login.html" style="font-weight:600;">Iniciar sesión</a>
+            </p>
+        </div>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script>
+        const form = document.getElementById('registroForm');
+        const alertDiv = document.getElementById('alert');
+
+        function showAlert(msg, type) {
+            alertDiv.className = 'alert alert-' + type;
+            alertDiv.textContent = msg;
+        }
+
+        function validate() {
+            document.querySelectorAll('.error-field').forEach(el => el.classList.remove('error-field'));
+            document.querySelectorAll('.error-msg').forEach(el => el.remove());
+
+            const username = document.getElementById('username');
+            const password = document.getElementById('password');
+            const confirm = document.getElementById('confirmPassword');
+            let valid = true;
+
+            if (!username.value.trim()) {
+                username.classList.add('error-field');
+                username.insertAdjacentHTML('afterend', '<span class="error-msg">El usuario es requerido.</span>');
+                valid = false;
+            } else if (username.value.trim().length < 4) {
+                username.classList.add('error-field');
+                username.insertAdjacentHTML('afterend', '<span class="error-msg">Mínimo 4 caracteres.</span>');
+                valid = false;
+            }
+
+            if (!password.value) {
+                password.classList.add('error-field');
+                password.insertAdjacentHTML('afterend', '<span class="error-msg">La contraseña es requerida.</span>');
+                valid = false;
+            } else if (password.value.length < 6) {
+                password.classList.add('error-field');
+                password.insertAdjacentHTML('afterend', '<span class="error-msg">Mínimo 6 caracteres.</span>');
+                valid = false;
+            }
+
+            if (!confirm.value) {
+                confirm.classList.add('error-field');
+                confirm.insertAdjacentHTML('afterend', '<span class="error-msg">Confirma tu contraseña.</span>');
+                valid = false;
+            } else if (password.value !== confirm.value) {
+                confirm.classList.add('error-field');
+                confirm.insertAdjacentHTML('afterend', '<span class="error-msg">Las contraseñas no coinciden.</span>');
+                valid = false;
+            }
+
+            return valid;
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            alertDiv.className = 'alert';
+
+            if (!validate()) return;
+
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+
+            try {
+                const res = await fetch(`${API_BASE}/usuarios/registro`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password, suspendido: false, rolIds: [] })
+                });
+
+                const data = await res.json();
+
+                if (res.ok || res.status === 201) {
+                    showAlert(data.message, 'success');
+                    setTimeout(() => window.location.href = 'login.html?registro=ok', 800);
+                } else {
+                    showAlert(data.message || 'Error al registrarse.', 'error');
+                }
+            } catch (err) {
+                showAlert('No se pudo conectar con el servidor.', 'error');
+            }
+        });
+    </script>
+</body>
+</html>

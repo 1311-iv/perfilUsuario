@@ -35,7 +35,38 @@ public class UsuariosController : ControllerBase
                     new { IdUsuario = usuario.Id })).ToList();
             }
 
-            return Ok(usuarios);
+            var result = usuarios.Select(u => new { u.Id, u.Username, u.Suspendido, u.Roles });
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = "Error interno del servidor.", error = ex.Message });
+        }
+    }
+
+    [HttpPost("registro")]
+    public async Task<IActionResult> Registro([FromBody] UsuarioRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Password))
+            return BadRequest(new { message = "Username y password son requeridos." });
+
+        try
+        {
+            using var connection = new SqlConnection(_connectionString);
+            var existing = await connection.QueryFirstOrDefaultAsync<int?>(
+                "SELECT id FROM usuarios WHERE username = @Username",
+                new { request.Username });
+
+            if (existing != null)
+                return BadRequest(new { message = "El usuario ya existe." });
+
+            var userId = await connection.QuerySingleAsync<int>(
+                @"INSERT INTO usuarios (username, password, suspendido)
+                  VALUES (@Username, @Password, @Suspendido);
+                  SELECT CAST(SCOPE_IDENTITY() AS INT);",
+                new { request.Username, request.Password, Suspendido = false });
+
+            return StatusCode(201, new { id = userId, username = request.Username, message = "Usuario registrado exitosamente." });
         }
         catch (Exception ex)
         {
@@ -63,7 +94,7 @@ public class UsuariosController : ControllerBase
                   WHERE ur.idUsuario = @IdUsuario",
                 new { IdUsuario = usuario.Id })).ToList();
 
-            return Ok(usuario);
+            return Ok(new { usuario.Id, usuario.Username, usuario.Suspendido, usuario.Roles });
         }
         catch (Exception ex)
         {
@@ -85,6 +116,16 @@ public class UsuariosController : ControllerBase
 
             try
             {
+                var existing = await connection.QueryFirstOrDefaultAsync<int?>(
+                    "SELECT id FROM usuarios WHERE username = @Username",
+                    new { request.Username }, transaction);
+
+                if (existing != null)
+                {
+                    transaction.Rollback();
+                    return BadRequest(new { message = "El usuario ya existe." });
+                }
+
                 var userId = await connection.QuerySingleAsync<int>(
                     @"INSERT INTO usuarios (username, password, suspendido)
                       VALUES (@Username, @Password, @Suspendido);
@@ -187,6 +228,20 @@ public class UsuariosController : ControllerBase
 
                 await connection.ExecuteAsync(
                     "DELETE FROM UsuarioRoles WHERE idUsuario = @Id", new { Id = id }, transaction);
+
+                var perfilIds = (await connection.QueryAsync<int>(
+                    "SELECT id FROM perfilUsuario WHERE idUsuario = @Id", new { Id = id }, transaction)).ToList();
+
+                foreach (var perfilId in perfilIds)
+                {
+                    await connection.ExecuteAsync(
+                        "DELETE FROM Telefonos WHERE idPerfilUsuario = @PerfilId", new { PerfilId = perfilId }, transaction);
+                    await connection.ExecuteAsync(
+                        "DELETE FROM direcciones WHERE idPerfilUsuario = @PerfilId", new { PerfilId = perfilId }, transaction);
+                }
+
+                await connection.ExecuteAsync(
+                    "DELETE FROM perfilUsuario WHERE idUsuario = @Id", new { Id = id }, transaction);
 
                 await connection.ExecuteAsync(
                     "DELETE FROM usuarios WHERE id = @Id", new { Id = id }, transaction);

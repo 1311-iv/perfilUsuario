@@ -118,15 +118,31 @@ public class RolesController : ControllerBase
         try
         {
             using var connection = new SqlConnection(_connectionString);
-            var exists = await connection.QueryFirstOrDefaultAsync<int?>(
-                "SELECT id FROM roles WHERE id = @Id", new { Id = id });
+            await connection.OpenAsync();
+            using var transaction = connection.BeginTransaction();
 
-            if (exists == null)
-                return NotFound(new { message = "Rol no encontrado." });
+            try
+            {
+                var exists = await connection.QueryFirstOrDefaultAsync<int?>(
+                    "SELECT id FROM roles WHERE id = @Id", new { Id = id }, transaction);
 
-            await connection.ExecuteAsync("DELETE FROM UsuarioRoles WHERE idRol = @Id", new { Id = id });
-            await connection.ExecuteAsync("DELETE FROM roles WHERE id = @Id", new { Id = id });
-            return Ok(new { message = "Rol eliminado exitosamente." });
+                if (exists == null)
+                {
+                    transaction.Rollback();
+                    return NotFound(new { message = "Rol no encontrado." });
+                }
+
+                await connection.ExecuteAsync("DELETE FROM UsuarioRoles WHERE idRol = @Id", new { Id = id }, transaction);
+                await connection.ExecuteAsync("DELETE FROM roles WHERE id = @Id", new { Id = id }, transaction);
+
+                transaction.Commit();
+                return Ok(new { message = "Rol eliminado exitosamente." });
+            }
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
         }
         catch (Exception ex)
         {

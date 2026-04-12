@@ -33,7 +33,7 @@
                     </div>
                     <div class="form-group">
                         <label for="password">Password *</label>
-                        <input type="text" id="password" maxlength="100" required>
+                        <input type="password" id="password" maxlength="100" required>
                     </div>
                 </div>
                 <div class="form-group">
@@ -148,7 +148,8 @@
 
                 document.getElementById('editId').value = u.id;
                 document.getElementById('username').value = u.username || '';
-                document.getElementById('password').value = u.password || '';
+                document.getElementById('password').value = '';
+                document.getElementById('password').placeholder = 'Ingresa nueva contraseña';
                 document.getElementById('suspendido').checked = u.suspendido;
                 document.getElementById('formTitle').textContent = 'Editar Usuario';
                 document.getElementById('submitBtn').textContent = 'Actualizar';

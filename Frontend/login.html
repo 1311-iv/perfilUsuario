@@ -24,6 +24,9 @@
                     <button type="submit" class="btn btn-primary" style="width:100%;">Ingresar</button>
                 </div>
             </form>
+            <p style="text-align:center;margin-top:1rem;font-size:.9rem;">
+                ¿No tienes cuenta? <a href="registro.html" style="font-weight:600;">Regístrate</a>
+            </p>
         </div>
     </div>
 
@@ -35,6 +38,11 @@
         function showAlert(msg, type) {
             alertDiv.className = 'alert alert-' + type;
             alertDiv.textContent = msg;
+        }
+
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('registro') === 'ok') {
+            showAlert('Registro exitoso. Ahora puedes iniciar sesión.', 'success');
         }
 
         form.addEventListener('submit', async (e) => {
