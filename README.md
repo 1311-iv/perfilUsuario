@@ -1,12 +1,15 @@
-# Sistema de Perfiles de Usuario
+# Sistema de Gestión de Perfiles de Usuario
 
-REST API con .NET 8 Web API + Dapper y Frontend en HTML/CSS/JS vanilla.
+## Descripción
+Sistema web para la gestión de perfiles de usuario. Backend API REST con ASP.NET Web API 2 (.NET Framework 4.8) + Dapper. Frontend con HTML/CSS/JavaScript vanilla.
 
 ## Estructura del Proyecto
 
 ```
 perfilUsuario/
-├── PerfilUsuarioAPI/          ← Backend (.NET Web API)
+├── PerfilUsuarioAPI/          # Backend - Código fuente
+│   ├── App_Start/
+│   │   └── WebApiConfig.cs    # CORS + Rutas + JSON config
 │   ├── Controllers/
 │   │   ├── AuthController.cs
 │   │   ├── DireccionesController.cs
@@ -22,13 +25,13 @@ perfilUsuario/
 │   │   ├── Telefono.cs
 │   │   ├── Usuario.cs
 │   │   └── UsuarioRequest.cs
-│   ├── appsettings.json
-│   ├── Program.cs
-│   └── PerfilUsuarioAPI.csproj
-├── Frontend/                  ← Frontend (HTML/CSS/JS)
+│   ├── Global.asax.cs
+│   └── Web.config              # Connection string aquí
+├── Frontend/
 │   ├── css/styles.css
-│   ├── js/config.js
+│   ├── js/config.js            # URL de la API aquí
 │   ├── login.html
+│   ├── registro.html
 │   ├── perfiles.html
 │   ├── perfil-form.html
 │   ├── perfil-detalle.html
@@ -40,73 +43,101 @@ perfilUsuario/
 
 ## Requisitos
 
-- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
-- SQL Server con la base de datos ya creada
+- Visual Studio 2022
+- .NET Framework 4.8
+- SQL Server (local)
 
-## Configuración
+## Configuración en Visual Studio 2022
 
-1. Edita la cadena de conexión en `PerfilUsuarioAPI/appsettings.json`:
+### 1. Crear el proyecto
+1. Abrir Visual Studio 2022
+2. "Crear un proyecto" → **Aplicación web ASP.NET (.NET Framework)** (C#)
+3. Nombre: `PerfilUsuarioAPI` | Framework: **.NET Framework 4.8**
+4. Seleccionar plantilla **Web API** → Crear
 
-```json
-"ConnectionStrings": {
-    "DefaultConnection": "Server=TU_SERVIDOR;Database=TU_BD;Trusted_Connection=true;TrustServerCertificate=true;"
-}
+### 2. Limpiar archivos del template
+Eliminar del proyecto:
+- `Controllers/HomeController.cs`
+- `Controllers/ValuesController.cs`
+- `Views/` (toda la carpeta)
+- `Areas/` (si existe)
+
+### 3. Copiar archivos del repositorio
+Desde este repo, copiar y reemplazar:
+- `PerfilUsuarioAPI/Controllers/` → los 5 archivos .cs
+- `PerfilUsuarioAPI/Models/` → los 8 archivos .cs
+- `PerfilUsuarioAPI/App_Start/WebApiConfig.cs` → reemplazar el existente
+- `PerfilUsuarioAPI/Global.asax.cs` → reemplazar el existente
+- `PerfilUsuarioAPI/Web.config` → agregar el `<connectionStrings>` (ver abajo)
+
+### 4. Agregar archivos al proyecto
+En VS: clic derecho en `Controllers/` → Agregar → Elemento existente → seleccionar los 5 .cs
+Repetir con `Models/` → los 8 .cs
+
+### 5. Instalar paquetes NuGet
+En Package Manager Console (PM>):
+```
+PM> Install-Package Dapper
+PM> Install-Package Microsoft.AspNet.WebApi.Cors
+PM> Install-Package Swashbuckle
 ```
 
-2. Si la API no corre en `http://localhost:5000`, actualiza `Frontend/js/config.js`:
-
-```js
-const API_BASE = 'http://localhost:5000/api';
+### 6. Configurar conexión a BD
+En `Web.config`, agregar dentro de `<configuration>` (antes de `<appSettings>`):
+```xml
+<connectionStrings>
+  <add name="DefaultConnection"
+       connectionString="Server=localhost;Database=PerfilUsuarioDB;Trusted_Connection=true;"
+       providerName="System.Data.SqlClient" />
+</connectionStrings>
 ```
 
-## Ejecución
+### 7. Compilar y ejecutar
+- Ctrl+Shift+B → Compilar
+- F5 → Ejecutar con IIS Express
+- Swagger disponible en: `https://localhost:{puerto}/swagger`
 
-### Backend
+### 8. Configurar Frontend
+1. Copiar el puerto de IIS Express (ej: `https://localhost:44367`)
+2. Editar `Frontend/js/config.js`:
+   ```js
+   const API_BASE = 'https://localhost:44367/api';
+   ```
+3. Abrir `Frontend/login.html` en el navegador
 
-```bash
-cd PerfilUsuarioAPI
-dotnet restore
-dotnet run
-```
-
-La API estará disponible en `http://localhost:5000` (o el puerto configurado).
-
-### Frontend
-
-Abre `Frontend/login.html` directamente en el navegador o usa un servidor local:
-
-```bash
-cd Frontend
-# Opción 1: Python
-python3 -m http.server 8080
-
-# Opción 2: Node.js (npx)
-npx serve .
-```
-
-Luego navega a `http://localhost:8080/login.html`.
+## Base de Datos
+Crear la base de datos `PerfilUsuarioDB` en SQL Server con las tablas:
+- `usuarios` (id, username, password, suspendido)
+- `roles` (id, strValor, strDescripcion)
+- `UsuarioRoles` (id, idUsuario, idRol)
+- `perfilUsuario` (id, nombre, apellidoPaterno, apellidoMaterno, fechaNacimiento, rfc, idUsuario)
+- `Telefonos` (id, celular, casa, oficina, idPerfilUsuario)
+- `direcciones` (id, calle, colonia, NumInterior, NumExterior, Municipio, idPerfilUsuario)
 
 ## Endpoints de la API
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| POST | /api/auth/login | Login de usuario |
-| GET | /api/perfilUsuario | Todos los perfiles (con dirección y teléfono) |
-| GET | /api/perfilUsuario/{id} | Perfil por ID |
-| POST | /api/perfilUsuario | Crear perfil + dirección + teléfono |
+| POST | /api/auth/login | Iniciar sesión |
+| GET | /api/perfilUsuario | Listar perfiles |
+| GET | /api/perfilUsuario/{id} | Detalle de perfil |
+| POST | /api/perfilUsuario | Crear perfil |
 | PUT | /api/perfilUsuario/{id} | Actualizar perfil |
-| DELETE | /api/perfilUsuario/{id} | Eliminar perfil en cascada |
-| GET | /api/direcciones | Todas las direcciones |
-| GET | /api/direcciones/{id} | Dirección por ID |
+| DELETE | /api/perfilUsuario/{id} | Eliminar perfil |
+| GET | /api/direcciones | Listar direcciones |
+| GET | /api/direcciones/{id} | Detalle de dirección |
 | POST | /api/direcciones | Crear dirección |
 | PUT | /api/direcciones/{id} | Actualizar dirección |
 | DELETE | /api/direcciones/{id} | Eliminar dirección |
-| GET | /api/roles | Todos los roles (o filtrar con ?nombre=) |
+| GET | /api/roles | Listar roles |
+| GET | /api/roles?nombre=x | Buscar roles por nombre |
+| GET | /api/roles/{id} | Detalle de rol |
 | POST | /api/roles | Crear rol |
 | PUT | /api/roles/{id} | Actualizar rol |
 | DELETE | /api/roles/{id} | Eliminar rol |
-| GET | /api/usuarios | Todos los usuarios con roles |
-| GET | /api/usuarios/{id} | Usuario por ID con roles |
-| POST | /api/usuarios | Crear usuario con roles |
-| PUT | /api/usuarios/{id} | Actualizar usuario y roles |
+| GET | /api/usuarios | Listar usuarios |
+| GET | /api/usuarios/{id} | Detalle de usuario |
+| POST | /api/usuarios | Crear usuario |
+| POST | /api/usuarios/registro | Registrar usuario (público) |
+| PUT | /api/usuarios/{id} | Actualizar usuario |
 | DELETE | /api/usuarios/{id} | Eliminar usuario |
