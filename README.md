@@ -25,13 +25,16 @@ perfilUsuario/
 │   │   ├── Telefono.cs
 │   │   ├── Usuario.cs
 │   │   └── UsuarioRequest.cs
+│   ├── Global.asax
 │   ├── Global.asax.cs
-│   └── Web.config              # Connection string aquí
+│   ├── Web.config              # Connection string aquí
+│   ├── PerfilUsuarioAPI.csproj
+│   └── packages.config
+├── PerfilUsuarioAPI.sln         # Abrir con VS 2022
 ├── Frontend/
 │   ├── css/styles.css
 │   ├── js/config.js            # URL de la API aquí
 │   ├── login.html
-│   ├── registro.html
 │   ├── perfiles.html
 │   ├── perfil-form.html
 │   ├── perfil-detalle.html
@@ -49,41 +52,23 @@ perfilUsuario/
 
 ## Configuración en Visual Studio 2022
 
-### 1. Crear el proyecto
-1. Abrir Visual Studio 2022
-2. "Crear un proyecto" → **Aplicación web ASP.NET (.NET Framework)** (C#)
-3. Nombre: `PerfilUsuarioAPI` | Framework: **.NET Framework 4.8**
-4. Seleccionar plantilla **Web API** → Crear
+### 1. Abrir la solución
+1. Abrir `PerfilUsuarioAPI.sln` con Visual Studio 2022
+2. Si el proyecto aparece como "Descargado", clic derecho → Recargar proyecto
 
-### 2. Limpiar archivos del template
-Eliminar del proyecto:
-- `Controllers/HomeController.cs`
-- `Controllers/ValuesController.cs`
-- `Views/` (toda la carpeta)
-- `Areas/` (si existe)
+### 2. Restaurar paquetes NuGet
+Clic derecho en la solución → **Restaurar paquetes NuGet**
 
-### 3. Copiar archivos del repositorio
-Desde este repo, copiar y reemplazar:
-- `PerfilUsuarioAPI/Controllers/` → los 5 archivos .cs
-- `PerfilUsuarioAPI/Models/` → los 8 archivos .cs
-- `PerfilUsuarioAPI/App_Start/WebApiConfig.cs` → reemplazar el existente
-- `PerfilUsuarioAPI/Global.asax.cs` → reemplazar el existente
-- `PerfilUsuarioAPI/Web.config` → agregar el `<connectionStrings>` (ver abajo)
-
-### 4. Agregar archivos al proyecto
-En VS: clic derecho en `Controllers/` → Agregar → Elemento existente → seleccionar los 5 .cs
-Repetir con `Models/` → los 8 .cs
-
-### 5. Instalar paquetes NuGet
-En Package Manager Console (PM>):
+Si no se restauran, en Package Manager Console (PM>):
 ```
 PM> Install-Package Dapper
 PM> Install-Package Microsoft.AspNet.WebApi.Cors
 PM> Install-Package Swashbuckle
+PM> Install-Package Newtonsoft.Json
 ```
 
-### 6. Configurar conexión a BD
-En `Web.config`, agregar dentro de `<configuration>` (antes de `<appSettings>`):
+### 3. Configurar conexión a BD
+Verificar en `Web.config` que el `connectionString` apunte a tu SQL Server:
 ```xml
 <connectionStrings>
   <add name="DefaultConnection"
@@ -92,12 +77,12 @@ En `Web.config`, agregar dentro de `<configuration>` (antes de `<appSettings>`):
 </connectionStrings>
 ```
 
-### 7. Compilar y ejecutar
+### 4. Compilar y ejecutar
 - Ctrl+Shift+B → Compilar
 - F5 → Ejecutar con IIS Express
 - Swagger disponible en: `https://localhost:{puerto}/swagger`
 
-### 8. Configurar Frontend
+### 5. Configurar Frontend
 1. Copiar el puerto de IIS Express (ej: `https://localhost:44367`)
 2. Editar `Frontend/js/config.js`:
    ```js
@@ -106,7 +91,13 @@ En `Web.config`, agregar dentro de `<configuration>` (antes de `<appSettings>`):
 3. Abrir `Frontend/login.html` en el navegador
 
 ## Base de Datos
-Crear la base de datos `PerfilUsuarioDB` en SQL Server con las tablas:
+Crear la base de datos `PerfilUsuarioDB` en SQL Server con las tablas.
+**Insertar al menos un usuario manualmente** para poder hacer login:
+```sql
+INSERT INTO usuarios (username, password, suspendido) VALUES ('admin', 'admin123', 0);
+```
+
+Tablas:
 - `usuarios` (id, username, password, suspendido)
 - `roles` (id, strValor, strDescripcion)
 - `UsuarioRoles` (id, idUsuario, idRol)
@@ -138,6 +129,5 @@ Crear la base de datos `PerfilUsuarioDB` en SQL Server con las tablas:
 | GET | /api/usuarios | Listar usuarios |
 | GET | /api/usuarios/{id} | Detalle de usuario |
 | POST | /api/usuarios | Crear usuario |
-| POST | /api/usuarios/registro | Registrar usuario (público) |
 | PUT | /api/usuarios/{id} | Actualizar usuario |
 | DELETE | /api/usuarios/{id} | Eliminar usuario |
