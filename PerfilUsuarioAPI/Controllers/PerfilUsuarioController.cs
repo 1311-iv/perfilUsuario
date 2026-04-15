@@ -307,6 +307,17 @@ namespace PerfilUsuarioAPI.Controllers
                                 return Content(HttpStatusCode.NotFound, new { message = "Perfil no encontrado." });
                             }
 
+                            var totalDirecciones = connection.ExecuteScalar<int>(
+                                "SELECT COUNT(*) FROM direcciones WHERE idPerfilUsuario = @Id",
+                                new { Id = id }, transaction);
+
+                            if (totalDirecciones > 1)
+                            {
+                                transaction.Rollback();
+                                return Content(HttpStatusCode.BadRequest,
+                                    new { message = "No se puede eliminar el perfil porque tiene más de 1 dirección. Elimine direcciones hasta dejar máximo 1." });
+                            }
+
                             connection.Execute(
                                 "DELETE FROM Telefonos WHERE idPerfilUsuario = @Id", new { Id = id }, transaction);
 

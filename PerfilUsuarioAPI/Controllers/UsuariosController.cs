@@ -46,6 +46,41 @@ namespace PerfilUsuarioAPI.Controllers
             }
         }
 
+        [HttpPost]
+        [Route("registro")]
+        public IHttpActionResult Registro(LoginRequest request)
+        {
+            if (string.IsNullOrWhiteSpace(request?.Username) || string.IsNullOrWhiteSpace(request?.Password))
+                return BadRequest("Username y password son requeridos.");
+
+            try
+            {
+                using (var connection = new SqlConnection(_connectionString))
+                {
+                    var existing = connection.QueryFirstOrDefault<int?>(
+                        "SELECT id FROM usuarios WHERE username = @Username",
+                        new { request.Username });
+
+                    if (existing != null)
+                        return Content(HttpStatusCode.BadRequest,
+                            new { message = "El nombre de usuario ya existe." });
+
+                    var userId = connection.QuerySingle<int>(
+                        @"INSERT INTO usuarios (username, password, suspendido)
+                          VALUES (@Username, @Password, 0);
+                          SELECT CAST(SCOPE_IDENTITY() AS INT);",
+                        new { request.Username, request.Password });
+
+                    return Content(HttpStatusCode.Created,
+                        new { id = userId, username = request.Username, message = "Usuario registrado exitosamente." });
+                }
+            }
+            catch (Exception ex)
+            {
+                return InternalServerError(ex);
+            }
+        }
+
         [HttpGet]
         [Route("{id:int}")]
         public IHttpActionResult GetById(int id)
